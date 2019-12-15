@@ -23,17 +23,18 @@ fn main() {
         ])
         .get_matches();
 
-    // You can handle information about subcommands by requesting their matches by name
-    // (as below), requesting just the name used, or both at the same time
-    if let Some(_matches) = matches.subcommand_matches("set") {
-        panic!("unimplemented");
-    } else if let Some(_matches) = matches.subcommand_matches("get") {
-        panic!("unimplemented");
-    } else if let Some(_matches) = matches.subcommand_matches("rm") {
-        panic!("unimplemented");
-    } else {
-        panic!("no args");
+    match matches.subcommand() {
+        ("set", Some(_matches)) => {
+            panic!("unimplemented");
+        }
+        ("get", Some(_matches)) => {
+            panic!("unimplemented");
+        }
+        ("rm", Some(_matches)) => {
+            panic!("unimplemented");
+        }
+        _ => {
+            panic!("no args");
+        }
     }
-
-    // more program logic goes here...
 }
