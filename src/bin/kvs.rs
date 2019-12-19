@@ -1,4 +1,3 @@
-extern crate clap;
 use clap::{App, AppSettings, SubCommand};
 
 fn main() {
