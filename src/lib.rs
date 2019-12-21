@@ -1,8 +1,12 @@
-#![deny(missing_docs)]
+// #![deny(missing_docs)]
 
 //! A key-value store
 
 use std::collections::HashMap;
+use std::path::Path;
+use std::result;
+
+pub type Result<T> = result::Result<T, ()>;
 
 /// The key-value database
 ///
@@ -36,10 +40,14 @@ impl KvStore {
     /// # use kvs::KvStore;
     /// let mut store = KvStore::new();
     /// ```
-    pub fn new() -> KvStore {
+    pub fn new() -> Self {
         KvStore {
             map: HashMap::new(),
         }
+    }
+
+    pub fn open(path: &Path) -> Result<Self> {
+        unimplemented!();
     }
 
     /// Set the value of a string key to a string
@@ -50,7 +58,8 @@ impl KvStore {
     /// # use kvs::KvStore;
     /// let mut store = KvStore::new();
     /// store.set("key".to_owned(), "value".to_owned());
-    pub fn set(&mut self, key: String, value: String) {
+    pub fn set(&mut self, key: String, value: String) -> Result<()> {
+        unimplemented!();
         self.map.insert(key, value);
     }
 
@@ -64,8 +73,9 @@ impl KvStore {
     /// assert_eq!(store.get("key".to_owned()), Some("value".to_owned()));
     /// assert_eq!(store.get("another_key".to_owned()), None)
     /// ```
-    pub fn get(&self, key: String) -> Option<String> {
-        self.map.get(&key).map(|s| s.to_string())
+    pub fn get(&self, key: String) -> Result<Option<String>> {
+        unimplemented!();
+        // self.map.get(&key).map(|s| s.to_string())
     }
 
     /// Remove a given key
@@ -79,7 +89,8 @@ impl KvStore {
     /// store.remove("key".to_owned());
     /// assert_eq!(store.get("key".to_owned()), None);
     /// ```
-    pub fn remove(&mut self, key: String) {
+    pub fn remove(&mut self, key: String) -> Result<()> {
+        unimplemented!();
         self.map.remove(&key);
     }
 }
