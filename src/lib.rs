@@ -5,8 +5,9 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::result;
+use failure::Error;
 
-pub type Result<T> = result::Result<T, ()>;
+pub type Result<T> = result::Result<T, Error>;
 
 /// The key-value database
 ///
