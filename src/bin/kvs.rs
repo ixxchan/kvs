@@ -1,7 +1,11 @@
 use clap::{App, AppSettings, SubCommand};
-use kvs::Result;
+use kvs::{KvStore, Result};
+use std::path::Path;
+use std::process;
 
 fn main() -> Result<()> {
+    let mut kv = KvStore::open(Path::new("."))?;
+
     let matches = App::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .author(env!("CARGO_PKG_AUTHORS"))
@@ -24,15 +28,32 @@ fn main() -> Result<()> {
         .get_matches();
 
     match matches.subcommand() {
-        ("set", Some(_matches)) => {
-            panic!("unimplemented");
+        ("set", Some(matches)) => {
+            kv.set(
+                matches.value_of("KEY").unwrap().to_owned(),
+                matches.value_of("VALUE").unwrap().to_owned(),
+            )?;
+            process::exit(0);
         }
-        ("get", Some(_matches)) => {
-            panic!("unimplemented");
+        ("get", Some(matches)) => {
+            let value = kv.get(matches.value_of("KEY").unwrap().to_owned())?;
+            match value {
+                Some(value) => {
+                    println!("{}", value);
+                }
+                None => {
+                    println!("Key not found");
+                }
+            }
+            process::exit(0);
         }
-        ("rm", Some(_matches)) => {
-            panic!("unimplemented");
-        }
+        ("rm", Some(matches)) => match kv.remove(matches.value_of("KEY").unwrap().to_owned()) {
+            Ok(_) => process::exit(0),
+            Err(_) => {
+                println!("Key not found");
+                process::exit(1)
+            }
+        },
         _ => {
             panic!("no args");
         }

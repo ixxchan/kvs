@@ -2,96 +2,99 @@
 
 //! A key-value store
 
-use std::collections::HashMap;
-use std::path::Path;
-use std::result;
 use failure::Error;
+use serde::{Deserialize, Serialize};
+use serde_json::{Deserializer};
+use std::collections::HashMap;
+use std::fs::{File, OpenOptions};
+use std::io::{prelude::*, SeekFrom};
+use std::path::{Path, PathBuf};
+use std::result;
 
 pub type Result<T> = result::Result<T, Error>;
 
+#[derive(Serialize, Deserialize, Debug)]
+enum Command {
+    Set { key: String, value: String },
+    Rm(String),
+}
+
 /// The key-value database
-///
-/// # Examples
-///
-/// ```rust
-/// # use kvs::KvStore;
-/// let mut store = KvStore::new();
-/// store.set("key1".to_owned(), "value1".to_owned());
-/// assert_eq!(store.get("key1".to_owned()), Some("value1".to_owned()));
-///
-/// store.set("key1".to_owned(), "value2".to_owned());
-/// assert_eq!(store.get("key1".to_owned()), Some("value2".to_owned()));
-///
-/// assert_eq!(store.get("key2".to_owned()), None);
-///
-/// store.remove("key1".to_owned());
-/// assert_eq!(store.get("key1".to_owned()), None);
-/// ```
-#[derive(Default)]
 pub struct KvStore {
     map: HashMap<String, String>,
+    dir: PathBuf,
+    writer: File,
 }
 
 impl KvStore {
     /// Creates an empty instance of the database
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use kvs::KvStore;
-    /// let mut store = KvStore::new();
-    /// ```
-    pub fn new() -> Self {
-        KvStore {
-            map: HashMap::new(),
+    pub fn open(dir: &Path) -> Result<Self> {
+        std::fs::create_dir_all(&dir)?;
+        let mut map = HashMap::new();
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .read(true)
+            .open(dir.join("log.json"))?;
+        // read the log to restore the database in the memory
+        loop {
+            match Deserializer::from_reader(&mut file)
+                .into_iter::<Command>()
+                .next()
+            {
+                Some(cmd) => match cmd? {
+                    Command::Set { key, value } => {
+                        map.insert(key, value);
+                    }
+                    Command::Rm(key) => {
+                        map.remove(&key);
+                    }
+                },
+                None => break,
+            }
+            let mut newline = [0];
+            if file.read(&mut newline)? < 1 {
+                break;
+            }
+            if newline[0] != b'\n' {
+                panic!("expected newline");
+            }
         }
-    }
 
-    pub fn open(path: &Path) -> Result<Self> {
-        unimplemented!();
+        Ok(KvStore {
+            map,
+            dir: dir.to_owned(),
+            writer: file,
+        })
     }
 
     /// Set the value of a string key to a string
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use kvs::KvStore;
-    /// let mut store = KvStore::new();
-    /// store.set("key".to_owned(), "value".to_owned());
     pub fn set(&mut self, key: String, value: String) -> Result<()> {
-        unimplemented!();
+        let cmd = Command::Set {
+            key: key.clone(),
+            value: value.clone(),
+        };
+        serde_json::to_writer(&mut self.writer, &cmd)?;
+        writeln!(&mut self.writer)?;
+
         self.map.insert(key, value);
+        Ok(())
     }
 
     /// Get the string value of a given string key
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use kvs::KvStore;
-    /// let mut store = KvStore::new();
-    /// store.set("key".to_owned(), "value".to_owned());
-    /// assert_eq!(store.get("key".to_owned()), Some("value".to_owned()));
-    /// assert_eq!(store.get("another_key".to_owned()), None)
-    /// ```
-    pub fn get(&self, key: String) -> Result<Option<String>> {
-        unimplemented!();
-        // self.map.get(&key).map(|s| s.to_string())
+    pub fn get(&mut self, key: String) -> Result<Option<String>> {
+        Ok(self.map.get(&key).map(|s| s.to_string()))
     }
 
     /// Remove a given key
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use kvs::KvStore;
-    /// let mut store = KvStore::new();
-    /// store.set("key".to_owned(), "value".to_owned());
-    /// store.remove("key".to_owned());
-    /// assert_eq!(store.get("key".to_owned()), None);
-    /// ```
     pub fn remove(&mut self, key: String) -> Result<()> {
-        unimplemented!();
-        self.map.remove(&key);
+        let cmd = Command::Rm(key.clone());
+        serde_json::to_writer(&mut self.writer, &cmd)?;
+        writeln!(&mut self.writer)?;
+
+        match self.map.remove(&key) {
+            Some(_) => Ok(()),
+            None => Err(failure::err_msg("Key not found")),
+        }
     }
 }
