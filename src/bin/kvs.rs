@@ -28,13 +28,10 @@ fn main() -> Result<()> {
         .get_matches();
 
     match matches.subcommand() {
-        ("set", Some(matches)) => {
-            kv.set(
-                matches.value_of("KEY").unwrap().to_owned(),
-                matches.value_of("VALUE").unwrap().to_owned(),
-            )?;
-            process::exit(0);
-        }
+        ("set", Some(matches)) => kv.set(
+            matches.value_of("KEY").unwrap().to_owned(),
+            matches.value_of("VALUE").unwrap().to_owned(),
+        )?,
         ("get", Some(matches)) => {
             let value = kv.get(matches.value_of("KEY").unwrap().to_owned())?;
             match value {
@@ -45,17 +42,16 @@ fn main() -> Result<()> {
                     println!("Key not found");
                 }
             }
-            process::exit(0);
         }
-        ("rm", Some(matches)) => match kv.remove(matches.value_of("KEY").unwrap().to_owned()) {
-            Ok(_) => process::exit(0),
-            Err(_) => {
+        ("rm", Some(matches)) => {
+            if let Err(_) = kv.remove(matches.value_of("KEY").unwrap().to_owned()) {
                 println!("Key not found");
                 process::exit(1)
             }
-        },
+        }
         _ => {
             panic!("no args");
         }
-    }
+    };
+    Ok(())
 }
