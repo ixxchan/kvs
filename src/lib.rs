@@ -72,7 +72,7 @@ impl KvStore {
     pub fn get(&mut self, key: String) -> Result<Option<String>> {
         match self.imap.get(&key) {
             Some(index) => {
-                let mut reader = LogReader::new(File::open(self.log_dir.join("log.json")).unwrap());
+                let mut reader = LogReader::new(File::open(self.log_dir.join("log.json"))?);
                 reader.seek(SeekFrom::Start(index.pos))?;
                 let reader = reader.take(index.len);
                 match serde_json::from_reader(reader)? {
@@ -98,7 +98,7 @@ impl KvStore {
 
 impl Drop for KvStore {
     fn drop(&mut self) {
-        let idx_file = File::create(self.log_dir.join("index.json")).unwrap();
+        let idx_file = File::create(self.log_dir.join("index.json")).expect("Fail to create index file");
         serde_json::to_writer(idx_file, &self.imap).expect("Fail to save index file");
     }
 }
