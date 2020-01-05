@@ -4,10 +4,11 @@
 
 use failure::Error;
 use serde::{Deserialize, Serialize};
+use serde_json::Deserializer;
 use std::collections::HashMap;
-use std::fs::{File, OpenOptions};
-use std::io::{self, prelude::*, BufReader, BufWriter, ErrorKind, SeekFrom};
-use std::path::PathBuf;
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, prelude::*, BufReader, BufWriter, ErrorKind, Seek, SeekFrom};
+use std::path::{Path, PathBuf};
 use std::result;
 
 pub type Result<T> = result::Result<T, Error>;
@@ -40,7 +41,7 @@ impl KvStore {
             // restore the in-memory index from the index file if it exists
             Ok(idx_file) => imap = serde_json::from_reader(BufReader::new(idx_file))?,
             // read the log to restore the database in the memory
-            Err(e) if e.kind() == ErrorKind::NotFound => load_log(),
+            Err(e) if e.kind() == ErrorKind::NotFound => load_log(&path, &mut imap)?,
             Err(e) => Err(e)?,
         }
 
@@ -77,7 +78,7 @@ impl KvStore {
                 let reader = reader.take(index.len);
                 match serde_json::from_reader(reader)? {
                     Command::Set { key: k, value: v } if key == k => Ok(Some(v)),
-                    _ => panic!("inconsistent command"),
+                    c => panic!("inconsistent command {:?}", c),
                 }
             }
             None => Ok(None),
@@ -94,40 +95,46 @@ impl KvStore {
         serde_json::to_writer(&mut self.writer, &cmd)?;
         Ok(())
     }
+
+    fn save_index(&self) -> Result<()> {
+        let idx_file = File::create(self.log_dir.join("index.json"))?;
+        serde_json::to_writer(idx_file, &self.imap)?;
+        Ok(())
+    }
 }
 
 impl Drop for KvStore {
     fn drop(&mut self) {
-        let idx_file = File::create(self.log_dir.join("index.json")).expect("Fail to create index file");
-        serde_json::to_writer(idx_file, &self.imap).expect("Fail to save index file");
+        if let Err(_) = self.save_index() {
+            // fail to save index
+            fs::remove_file(self.log_dir.join("index.json")).unwrap();
+        }
     }
 }
 
-fn load_log() {
-    // unimplemented!();
-    // loop {
-    //     match Deserializer::from_reader(&mut reader)
-    //         .into_iter::<Command>()
-    //         .next()
-    //     {
-    //         Some(cmd) => match cmd? {
-    //             Command::Set { key, value } => {
-    //                 map.insert(key, value);
-    //             }
-    //             Command::Rm(key) => {
-    //                 map.remove(&key);
-    //             }
-    //         },
-    //         None => break,
-    //     }
-    //     let mut newline = [0];
-    //     if f.read(&mut newline)? < 1 {
-    //         break;
-    //     }
-    //     if newline[0] != b'\n' {
-    //         panic!("expected newline");
-    //     }
-    // }
+fn load_log(path: &Path, map: &mut HashMap<String, LogIndex>) -> Result<()> {
+    let mut reader = LogReader::new(File::open(path.join("log.json"))?);
+    loop {
+        let start_pos = reader.pos;
+        match Deserializer::from_reader(&mut reader)
+            .into_iter::<Command>()
+            .next()
+        {
+            Some(cmd) => {
+                let cmd = cmd?;
+                let len = reader.pos - start_pos;
+                match cmd {
+                    Command::Set { key, value: _ } => {
+                        map.insert(key, LogIndex::new(start_pos, len));
+                    }
+                    Command::Rm { key } => {
+                        map.remove(&key);
+                    }
+                }
+            }
+            None => return Ok(()),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -136,7 +143,36 @@ enum Command {
     Rm { key: String },
 }
 
-type LogReader = BufReader<File>;
+// type LogReader = BufReader<File>;
+// Record the reading position which is used when loading log file
+struct LogReader {
+    reader: BufReader<File>,
+    pos: u64,
+}
+
+impl LogReader {
+    fn new(file: File) -> Self {
+        let mut reader = BufReader::new(file);
+        let pos = reader.seek(SeekFrom::Start(0)).unwrap();
+        LogReader { reader, pos }
+    }
+}
+
+impl Read for LogReader {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let len = self.reader.read(buf)?;
+        self.pos += len as u64;
+        Ok(len)
+    }
+}
+
+impl Seek for LogReader {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        let pos = self.reader.seek(pos)?;
+        self.pos = pos;
+        Ok(pos)
+    }
+}
 
 // Record the writing position which is used by the index map
 struct LogWriter {
