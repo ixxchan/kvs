@@ -8,10 +8,13 @@ use serde_json::Deserializer;
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, prelude::*, BufReader, BufWriter, ErrorKind, Seek, SeekFrom};
+use std::mem;
 use std::path::{Path, PathBuf};
 use std::result;
 
 pub type Result<T> = result::Result<T, Error>;
+
+const COMPACTION_THREASHOLD: u64 = 1024;
 
 /// The key-value database. Log-structured file I/O is used internally for persistant storage.
 /// The serialization format is JSON because it is human-readable and the most generally used.
@@ -20,8 +23,10 @@ pub struct KvStore {
     imap: HashMap<String, LogIndex>,
     cache: HashMap<String, String>,
     log_dir: PathBuf,
-    writer: LogWriter,
+    writer: Option<LogWriter>,
     //reader: LogReader,
+    // number of redundant logs
+    dead: u64,
 }
 
 impl KvStore {
@@ -36,7 +41,7 @@ impl KvStore {
             .create(true)
             .append(true)
             .open(path.join("log.json"))?;
-        let writer = LogWriter::new(f);
+        let writer = Some(LogWriter::new(f));
         //let reader = LogReader::new(File::open(path.join("log.json")).unwrap());
 
         match File::open(path.join("index.json")) {
@@ -53,23 +58,35 @@ impl KvStore {
             log_dir: path,
             writer,
             //reader,
+            dead: 0,
         })
     }
 
     /// Set the value of a string key to a string
     pub fn set(&mut self, key: String, value: String) -> Result<()> {
-        let start_pos = self.writer.pos;
+        let mut writer = self.writer.take().unwrap();
+
+        let start_pos = writer.pos;
         let cmd = Command::Set {
             key: key.clone(),
             value: value.clone(),
         };
 
-        serde_json::to_writer(&mut self.writer, &cmd)?;
-        self.writer.flush()?;
+        serde_json::to_writer(&mut writer, &cmd)?;
+        writer.flush()?;
 
-        let len = self.writer.pos - start_pos;
+        let len = writer.pos - start_pos;
+        self.writer = Some(writer);
         self.cache.insert(key.clone(), value);
-        self.imap.insert(key, LogIndex::new(start_pos, len));
+        if let Some(_) = self.imap.insert(key, LogIndex::new(start_pos, len)) {
+            self.dead += 1;
+        }
+
+        // kill zombies
+        if self.dead >= COMPACTION_THREASHOLD {
+            self.compact()?;
+        }
+
         Ok(())
     }
 
@@ -100,16 +117,49 @@ impl KvStore {
         if let None = self.imap.remove(&key) {
             return Err(failure::err_msg("Key not found"));
         }
+        self.dead += 1;
         self.cache.remove(&key);
 
         let cmd = Command::Rm { key: key.clone() };
-        serde_json::to_writer(&mut self.writer, &cmd)?;
+        let mut writer = self.writer.take().unwrap();
+        serde_json::to_writer(&mut writer, &cmd)?;
+        self.writer = Some(writer);
         Ok(())
     }
 
     fn save_index(&self) -> Result<()> {
         let idx_file = File::create(self.log_dir.join("index.json"))?;
         serde_json::to_writer(idx_file, &self.imap)?;
+        Ok(())
+    }
+
+    /// Compacting the log
+    pub fn compact(&mut self) -> Result<()> {
+        let f = File::create(self.log_dir.join("compacted.json"))?;
+        let mut compacted_writer = LogWriter::new(f);
+        for index in self.imap.values_mut() {
+            // It seems inefficient to create a reader in every iteration
+            let mut reader = LogReader::new(File::open(self.log_dir.join("log.json"))?);
+            reader.seek(SeekFrom::Start(index.pos))?;
+            let mut reader = reader.take(index.len);
+            index.pos = compacted_writer.pos;
+            io::copy(&mut reader, &mut compacted_writer)?;
+        }
+
+        // close file handlers
+        let writer = self.writer.take();
+        mem::drop(compacted_writer);
+        mem::drop(writer);
+        // replace the original log with the compacted log
+        fs::rename(
+            self.log_dir.join("compacted.json"),
+            self.log_dir.join("log.json"),
+        )?;
+        // restore self.writer
+        let f = OpenOptions::new()
+            .append(true)
+            .open(self.log_dir.join("log.json"))?;
+        self.writer = Some(LogWriter::new(f));
         Ok(())
     }
 }
