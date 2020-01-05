@@ -18,6 +18,7 @@ pub type Result<T> = result::Result<T, Error>;
 pub struct KvStore {
     // index map
     imap: HashMap<String, LogIndex>,
+    cache: HashMap<String, String>,
     log_dir: PathBuf,
     writer: LogWriter,
     //reader: LogReader,
@@ -30,6 +31,7 @@ impl KvStore {
         let path = path.into();
         std::fs::create_dir_all(&path)?;
         let mut imap = HashMap::new();
+        let cache = HashMap::new();
         let f = OpenOptions::new()
             .create(true)
             .append(true)
@@ -47,6 +49,7 @@ impl KvStore {
 
         Ok(KvStore {
             imap,
+            cache,
             log_dir: path,
             writer,
             //reader,
@@ -65,19 +68,26 @@ impl KvStore {
         self.writer.flush()?;
 
         let len = self.writer.pos - start_pos;
+        self.cache.insert(key.clone(), value);
         self.imap.insert(key, LogIndex::new(start_pos, len));
         Ok(())
     }
 
     /// Get the string value of a given string key
     pub fn get(&mut self, key: String) -> Result<Option<String>> {
+        if let Some(value) = self.cache.get(&key) {
+            return Ok(Some(value.clone()));
+        }
         match self.imap.get(&key) {
             Some(index) => {
                 let mut reader = LogReader::new(File::open(self.log_dir.join("log.json"))?);
                 reader.seek(SeekFrom::Start(index.pos))?;
                 let reader = reader.take(index.len);
                 match serde_json::from_reader(reader)? {
-                    Command::Set { key: k, value: v } if key == k => Ok(Some(v)),
+                    Command::Set { key: k, value: v } if key == k => {
+                        self.cache.insert(key, v.clone());
+                        Ok(Some(v))
+                    }
                     c => panic!("inconsistent command {:?}", c),
                 }
             }
@@ -90,6 +100,7 @@ impl KvStore {
         if let None = self.imap.remove(&key) {
             return Err(failure::err_msg("Key not found"));
         }
+        self.cache.remove(&key);
 
         let cmd = Command::Rm { key: key.clone() };
         serde_json::to_writer(&mut self.writer, &cmd)?;
