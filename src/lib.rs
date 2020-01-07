@@ -16,6 +16,8 @@ pub type Result<T> = result::Result<T, Error>;
 
 const COMPACTION_THREASHOLD: u64 = 1024;
 
+pub trait KvsEngine {}
+
 /// The key-value database. Log-structured file I/O is used internally for persistant storage.
 /// The serialization format is JSON because it is human-readable and the most generally used.
 pub struct KvStore {
