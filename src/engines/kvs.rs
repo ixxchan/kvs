@@ -1,6 +1,6 @@
 //! A key-value store
-use crate::Result;
 use super::KvsEngine;
+use crate::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Deserializer;
 use std::collections::HashMap;
