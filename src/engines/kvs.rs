@@ -9,9 +9,71 @@ use std::io::{self, prelude::*, BufReader, BufWriter, ErrorKind, Seek, SeekFrom}
 use std::mem;
 use std::path::{Path, PathBuf};
 
-const COMPACTION_THREASHOLD: u64 = 1024;
+const COMPACTION_THRESHOLD: u64 = 1024;
 
-impl KvsEngine for KvStore {}
+impl KvsEngine for KvStore {
+    fn set(&mut self, key: String, value: String) -> Result<()> {
+        let mut writer = self.writer.take().unwrap();
+
+        let start_pos = writer.pos;
+        let cmd = Command::Set {
+            key: key.clone(),
+            value: value.clone(),
+        };
+
+        serde_json::to_writer(&mut writer, &cmd)?;
+        writer.flush()?;
+
+        let len = writer.pos - start_pos;
+        self.writer = Some(writer);
+        self.cache.insert(key.clone(), value);
+        if let Some(_) = self.imap.insert(key, LogIndex::new(start_pos, len)) {
+            self.dead += 1;
+        }
+
+        // kill zombies
+        if self.dead >= COMPACTION_THRESHOLD {
+            self.compact()?;
+        }
+
+        Ok(())
+    }
+
+    fn get(&mut self, key: String) -> Result<Option<String>> {
+        if let Some(value) = self.cache.get(&key) {
+            return Ok(Some(value.clone()));
+        }
+        match self.imap.get(&key) {
+            Some(index) => {
+                let mut reader = LogReader::new(File::open(self.log_dir.join("log.json"))?);
+                reader.seek(SeekFrom::Start(index.pos))?;
+                let reader = reader.take(index.len);
+                match serde_json::from_reader(reader)? {
+                    Command::Set { key: k, value: v } if key == k => {
+                        self.cache.insert(key, v.clone());
+                        Ok(Some(v))
+                    }
+                    c => panic!("inconsistent command {:?}", c),
+                }
+            }
+            None => Ok(None),
+        }
+    }
+
+    fn remove(&mut self, key: String) -> Result<()> {
+        if let None = self.imap.remove(&key) {
+            return Err(failure::err_msg("Key not found"));
+        }
+        self.dead += 1;
+        self.cache.remove(&key);
+
+        let cmd = Command::Rm { key: key.clone() };
+        let mut writer = self.writer.take().unwrap();
+        serde_json::to_writer(&mut writer, &cmd)?;
+        self.writer = Some(writer);
+        Ok(())
+    }
+}
 
 /// The key-value database. Log-structured file I/O is used internally for persistant storage.
 /// The serialization format is JSON because it is human-readable and the most generally used.
@@ -57,71 +119,6 @@ impl KvStore {
             //reader,
             dead: 0,
         })
-    }
-
-    /// Set the value of a string key to a string
-    pub fn set(&mut self, key: String, value: String) -> Result<()> {
-        let mut writer = self.writer.take().unwrap();
-
-        let start_pos = writer.pos;
-        let cmd = Command::Set {
-            key: key.clone(),
-            value: value.clone(),
-        };
-
-        serde_json::to_writer(&mut writer, &cmd)?;
-        writer.flush()?;
-
-        let len = writer.pos - start_pos;
-        self.writer = Some(writer);
-        self.cache.insert(key.clone(), value);
-        if let Some(_) = self.imap.insert(key, LogIndex::new(start_pos, len)) {
-            self.dead += 1;
-        }
-
-        // kill zombies
-        if self.dead >= COMPACTION_THREASHOLD {
-            self.compact()?;
-        }
-
-        Ok(())
-    }
-
-    /// Get the string value of a given string key
-    pub fn get(&mut self, key: String) -> Result<Option<String>> {
-        if let Some(value) = self.cache.get(&key) {
-            return Ok(Some(value.clone()));
-        }
-        match self.imap.get(&key) {
-            Some(index) => {
-                let mut reader = LogReader::new(File::open(self.log_dir.join("log.json"))?);
-                reader.seek(SeekFrom::Start(index.pos))?;
-                let reader = reader.take(index.len);
-                match serde_json::from_reader(reader)? {
-                    Command::Set { key: k, value: v } if key == k => {
-                        self.cache.insert(key, v.clone());
-                        Ok(Some(v))
-                    }
-                    c => panic!("inconsistent command {:?}", c),
-                }
-            }
-            None => Ok(None),
-        }
-    }
-
-    /// Remove a given key
-    pub fn remove(&mut self, key: String) -> Result<()> {
-        if let None = self.imap.remove(&key) {
-            return Err(failure::err_msg("Key not found"));
-        }
-        self.dead += 1;
-        self.cache.remove(&key);
-
-        let cmd = Command::Rm { key: key.clone() };
-        let mut writer = self.writer.take().unwrap();
-        serde_json::to_writer(&mut writer, &cmd)?;
-        self.writer = Some(writer);
-        Ok(())
     }
 
     fn save_index(&self) -> Result<()> {
