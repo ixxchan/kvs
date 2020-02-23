@@ -2,6 +2,10 @@ use clap::{App, AppSettings, Arg, SubCommand};
 use kvs::{KvStore, KvsClient, Result};
 use std::path::Path;
 use std::process;
+#[macro_use]
+extern crate log;
+use log::LevelFilter;
+use simplelog::*;
 
 fn main() -> Result<()> {
     // TODO: The repeated args in subcommands look ugly. How to improve it?
@@ -49,6 +53,8 @@ fn main() -> Result<()> {
                 ),
         ])
         .get_matches();
+
+    TermLogger::init(LevelFilter::Debug, Config::default(), TerminalMode::Stderr)?;
 
     match matches.subcommand() {
         ("set", Some(matches)) => {

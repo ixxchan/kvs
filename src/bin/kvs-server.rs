@@ -36,7 +36,7 @@ fn main() -> Result<()> {
     let addr = matches.value_of("addr").expect("wtf");
     let engine = matches.value_of("engine").expect("wtf");
 
-    TermLogger::init(LevelFilter::Info, Config::default(), TerminalMode::Stderr)?;
+    TermLogger::init(LevelFilter::Debug, Config::default(), TerminalMode::Stderr)?;
     info!("kvs-server {}", env!("CARGO_PKG_VERSION"));
     info!("Storage engine: {}", engine);
     info!("Listening on {}", addr);

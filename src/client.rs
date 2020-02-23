@@ -15,6 +15,7 @@ impl KvsClient {
     pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Self> {
         let reader = TcpStream::connect(addr)?;
         let writer = reader.try_clone()?;
+        debug!("Connected to {}", reader.peer_addr()?);
         Ok(KvsClient { reader, writer })
     }
 
@@ -22,7 +23,7 @@ impl KvsClient {
     pub fn set(&mut self, key: String, value: String) -> Result<()> {
         let request = Request::Set { key, value };
         serde_json::to_writer(&mut self.writer, &request)?;
-        self.writer.flush();
+        self.writer.flush()?;
         let response = serde_json::from_reader(&mut self.reader)?;
         match response {
             Response::Ok(_) => Ok(()),
@@ -34,7 +35,13 @@ impl KvsClient {
     pub fn get(&mut self, key: String) -> Result<Option<String>> {
         let request = Request::Get { key };
         serde_json::to_writer(&mut self.writer, &request)?;
-        self.writer.flush();
+        self.writer.flush()?;
+        debug!(
+            "Send request to {}: {:?}",
+            self.reader.peer_addr()?,
+            request
+        );
+
         let response = serde_json::from_reader(&mut self.reader)?;
         match response {
             Response::Ok(value) => Ok(value),
@@ -46,7 +53,7 @@ impl KvsClient {
     pub fn remove(&mut self, key: String) -> Result<()> {
         let request = Request::Rm { key };
         serde_json::to_writer(&mut self.writer, &request)?;
-        self.writer.flush();
+        self.writer.flush()?;
         let response = serde_json::from_reader(&mut self.reader)?;
         match response {
             Response::Ok(_) => Ok(()),
