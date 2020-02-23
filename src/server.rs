@@ -3,8 +3,8 @@ use crate::{
     KvsEngine, Result,
 };
 
-use serde_json::ser::State::Rest;
-use std::io::Write;
+use serde_json::Deserializer;
+use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 
 pub struct KvsServer<E: KvsEngine> {
@@ -37,25 +37,28 @@ impl<E: KvsEngine> KvsServer<E> {
         let mut writer = stream.try_clone()?;
         let peer_addr = stream.peer_addr()?;
         debug!("Connected to {}", peer_addr);
-        let request = serde_json::from_reader(stream)?;
-        debug!("Receive request from {}: {:?}", peer_addr, request);
-        let response = match request {
-            Request::Get { key } => match self.engine.get(key) {
-                Ok(value) => Response::Ok(value),
-                Err(e) => Response::Err(format!("{}", e)),
-            },
-            Request::Set { key, value } => match self.engine.set(key, value) {
-                Ok(()) => Response::Ok(None),
-                Err(e) => Response::Err(format!("{}", e)),
-            },
-            Request::Rm { key } => match self.engine.remove(key) {
-                Ok(()) => Response::Ok(None),
-                Err(e) => Response::Err(format!("{}", e)),
-            },
-        };
-        serde_json::to_writer(&mut writer, &response);
-        writer.flush()?;
-        debug!("Send response to {}: {:?}", peer_addr, response);
+
+        for request in Deserializer::from_reader(stream).into_iter::<Request>() {
+            let request = request?;
+            debug!("Receive request from {}: {:?}", peer_addr, request);
+            let response = match request {
+                Request::Get { key } => match self.engine.get(key) {
+                    Ok(value) => Response::Ok(value),
+                    Err(e) => Response::Err(format!("{}", e)),
+                },
+                Request::Set { key, value } => match self.engine.set(key, value) {
+                    Ok(()) => Response::Ok(None),
+                    Err(e) => Response::Err(format!("{}", e)),
+                },
+                Request::Rm { key } => match self.engine.remove(key) {
+                    Ok(()) => Response::Ok(None),
+                    Err(e) => Response::Err(format!("{}", e)),
+                },
+            };
+            serde_json::to_writer(&mut writer, &response);
+            writer.flush()?;
+            debug!("Send response to {}: {:?}", peer_addr, response);
+        }
 
         Ok(())
     }

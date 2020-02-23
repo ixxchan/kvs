@@ -2,20 +2,24 @@ use crate::{
     protocol::{Request, Response},
     Result,
 };
-use std::io::Write;
+use serde::Deserialize;
+use serde_json::de::IoRead;
+use serde_json::Deserializer;
+use std::io::prelude::*;
 use std::net::{TcpStream, ToSocketAddrs};
 
 pub struct KvsClient {
-    reader: TcpStream,
+    reader: Deserializer<IoRead<TcpStream>>,
     writer: TcpStream,
 }
 
 impl KvsClient {
     /// Connect to the address of a server
     pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Self> {
-        let reader = TcpStream::connect(addr)?;
-        let writer = reader.try_clone()?;
-        debug!("Connected to {}", reader.peer_addr()?);
+        let writer = TcpStream::connect(addr)?;
+
+        let reader = Deserializer::from_reader(writer.try_clone()?);
+        debug!("Connected to {}", writer.peer_addr()?);
         Ok(KvsClient { reader, writer })
     }
 
@@ -24,7 +28,8 @@ impl KvsClient {
         let request = Request::Set { key, value };
         serde_json::to_writer(&mut self.writer, &request)?;
         self.writer.flush()?;
-        let response = serde_json::from_reader(&mut self.reader)?;
+        let response: Response = Response::deserialize(&mut self.reader)?;
+
         match response {
             Response::Ok(_) => Ok(()),
             Response::Err(msg) => Err(failure::err_msg(msg)),
@@ -38,11 +43,14 @@ impl KvsClient {
         self.writer.flush()?;
         debug!(
             "Send request to {}: {:?}",
-            self.reader.peer_addr()?,
+            self.writer.peer_addr()?,
             request
         );
 
-        let response = serde_json::from_reader(&mut self.reader)?;
+        let response: Response = Response::deserialize(&mut self.reader)?;
+
+        debug!("Receive response {:?}", response);
+
         match response {
             Response::Ok(value) => Ok(value),
             Response::Err(msg) => Err(failure::err_msg(msg)),
@@ -54,7 +62,7 @@ impl KvsClient {
         let request = Request::Rm { key };
         serde_json::to_writer(&mut self.writer, &request)?;
         self.writer.flush()?;
-        let response = serde_json::from_reader(&mut self.reader)?;
+        let response = Response::deserialize(&mut self.reader)?;
         match response {
             Response::Ok(_) => Ok(()),
             Response::Err(msg) => Err(failure::err_msg(msg)),
