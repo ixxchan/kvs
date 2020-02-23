@@ -1,11 +1,10 @@
 use clap::{App, AppSettings, Arg, SubCommand};
-use kvs::{KvStore, Result};
+use kvs::{KvStore, KvsClient, Result};
 use std::path::Path;
 use std::process;
 
 fn main() -> Result<()> {
-    let mut kv = KvStore::open(Path::new("."))?;
-
+    // TODO: The repeated args in subcommands look ugly. How to improve it?
     let matches = App::new("kvs-client")
         .version(env!("CARGO_PKG_VERSION"))
         .author(env!("CARGO_PKG_AUTHORS"))
@@ -54,14 +53,16 @@ fn main() -> Result<()> {
     match matches.subcommand() {
         ("set", Some(matches)) => {
             let addr = matches.value_of("addr").expect("wtf");
-            println!("{}", addr);
-            kv.set(
+            let mut client = KvsClient::connect(addr)?;
+            client.set(
                 matches.value_of("KEY").unwrap().to_owned(),
                 matches.value_of("VALUE").unwrap().to_owned(),
             )?
         }
         ("get", Some(matches)) => {
-            let value = kv.get(matches.value_of("KEY").unwrap().to_owned())?;
+            let addr = matches.value_of("addr").expect("wtf");
+            let mut client = KvsClient::connect(addr)?;
+            let value = client.get(matches.value_of("KEY").unwrap().to_owned())?;
             match value {
                 Some(value) => {
                     println!("{}", value);
@@ -72,7 +73,9 @@ fn main() -> Result<()> {
             }
         }
         ("rm", Some(matches)) => {
-            if let Err(_) = kv.remove(matches.value_of("KEY").unwrap().to_owned()) {
+            let addr = matches.value_of("addr").expect("wtf");
+            let mut client = KvsClient::connect(addr)?;
+            if let Err(_) = client.remove(matches.value_of("KEY").unwrap().to_owned()) {
                 println!("Key not found");
                 process::exit(1)
             }

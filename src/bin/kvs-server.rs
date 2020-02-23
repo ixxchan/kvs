@@ -1,6 +1,6 @@
-use clap::{App, AppSettings, Arg, SubCommand};
-use kvs::{KvStore, Result};
-use std::path::Path;
+use clap::{App, AppSettings, Arg};
+use kvs::*;
+use std::env;
 use std::process;
 
 #[macro_use]
@@ -36,9 +36,20 @@ fn main() -> Result<()> {
     let addr = matches.value_of("addr").expect("wtf");
     let engine = matches.value_of("engine").expect("wtf");
 
-    TermLogger::init(LevelFilter::Info, Config::default(), TerminalMode::Stderr);
+    TermLogger::init(LevelFilter::Info, Config::default(), TerminalMode::Stderr)?;
     info!("kvs-server {}", env!("CARGO_PKG_VERSION"));
     info!("Storage engine: {}", engine);
     info!("Listening on {}", addr);
-    Ok(())
+
+    run_engine(engine, addr)
+}
+
+fn run_engine(engine: &str, addr: &str) -> Result<()> {
+    let e;
+    match engine {
+        _ => e = KvStore::open(env::current_dir()?)?,
+        // "sled" => e = SledKvsEngine,
+    }
+    let mut server = KvsServer::new(e);
+    server.run(addr)
 }
