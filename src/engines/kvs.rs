@@ -70,6 +70,7 @@ impl KvsEngine for KvStore {
         let cmd = Command::Rm { key: key.clone() };
         let mut writer = self.writer.take().unwrap();
         serde_json::to_writer(&mut writer, &cmd)?;
+        writer.flush()?;
         self.writer = Some(writer);
         Ok(())
     }
