@@ -9,6 +9,7 @@ pub struct SledKvsEngine {
 impl KvsEngine for SledKvsEngine {
     fn set(&mut self, key: String, value: String) -> Result<()> {
         self.db.insert(key, value.into_bytes())?;
+        self.db.flush()?;
         Ok(())
     }
 
@@ -24,6 +25,7 @@ impl KvsEngine for SledKvsEngine {
         if let None = self.db.remove(key)? {
             Err(failure::err_msg("Key not found"))
         } else {
+            self.db.flush()?;
             Ok(())
         }
     }
