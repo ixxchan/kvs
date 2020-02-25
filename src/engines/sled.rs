@@ -22,7 +22,7 @@ impl KvsEngine for SledKvsEngine {
     }
 
     fn remove(&mut self, key: String) -> Result<()> {
-        if self.db.remove(key).is_err() {
+        if self.db.remove(key)?.is_none() {
             Err(failure::err_msg("Key not found"))
         } else {
             self.db.flush()?;
