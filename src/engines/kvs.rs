@@ -27,7 +27,11 @@ impl KvsEngine for KvStore {
         let len = writer.pos - start_pos;
         self.writer = Some(writer);
         self.cache.insert(key.clone(), value);
-        if let Some(_) = self.imap.insert(key, LogIndex::new(start_pos, len)) {
+        if self
+            .imap
+            .insert(key, LogIndex::new(start_pos, len))
+            .is_some()
+        {
             self.dead += 1;
         }
 
@@ -61,7 +65,7 @@ impl KvsEngine for KvStore {
     }
 
     fn remove(&mut self, key: String) -> Result<()> {
-        if let None = self.imap.remove(&key) {
+        if self.imap.remove(&key).is_none() {
             return Err(failure::err_msg("Key not found"));
         }
         self.dead += 1;
@@ -109,7 +113,7 @@ impl KvStore {
             Ok(idx_file) => imap = serde_json::from_reader(BufReader::new(idx_file))?,
             // read the log to restore the database in the memory
             Err(e) if e.kind() == ErrorKind::NotFound => load_log(&path, &mut imap)?,
-            Err(e) => Err(e)?,
+            Err(e) => return Err(e.into()),
         }
 
         Ok(KvStore {
@@ -161,7 +165,7 @@ impl KvStore {
 
 impl Drop for KvStore {
     fn drop(&mut self) {
-        if let Err(_) = self.save_index() {
+        if self.save_index().is_err() {
             // fail to save index
             fs::remove_file(self.log_dir.join("index.json")).unwrap();
         }
@@ -180,7 +184,7 @@ fn load_log(path: &Path, map: &mut HashMap<String, LogIndex>) -> Result<()> {
                 let cmd = cmd?;
                 let len = reader.pos - start_pos;
                 match cmd {
-                    Command::Set { key, value: _ } => {
+                    Command::Set { key, .. } => {
                         map.insert(key, LogIndex::new(start_pos, len));
                     }
                     Command::Rm { key } => {

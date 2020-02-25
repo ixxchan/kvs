@@ -1,6 +1,6 @@
 use super::KvsEngine;
 use crate::Result;
-use std::path::PathBuf;
+use std::path::Path;
 
 pub struct SledKvsEngine {
     db: sled::Db,
@@ -22,7 +22,7 @@ impl KvsEngine for SledKvsEngine {
     }
 
     fn remove(&mut self, key: String) -> Result<()> {
-        if let None = self.db.remove(key)? {
+        if self.db.remove(key).is_err() {
             Err(failure::err_msg("Key not found"))
         } else {
             self.db.flush()?;
@@ -32,7 +32,7 @@ impl KvsEngine for SledKvsEngine {
 }
 
 impl SledKvsEngine {
-    pub fn open<P: AsRef<std::path::Path>>(path: P) -> Result<Self> {
+    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         Ok(SledKvsEngine {
             db: sled::open(path)?,
         })

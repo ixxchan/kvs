@@ -6,7 +6,7 @@ use std::{env, fs::File, process};
 extern crate log;
 use log::LevelFilter;
 use simplelog::*;
-use std::io::{Error, Read, Write};
+use std::io::{Read, Write};
 
 fn main() -> Result<()> {
     let matches = App::new("kvs-server")
@@ -36,10 +36,10 @@ fn main() -> Result<()> {
     let input_engine = matches.value_of("engine");
 
     let mut buf = String::new();
-    let mut old_engine;
+    let old_engine;
     match File::open("ENGINE") {
         Ok(mut f) => {
-            f.read_to_string(&mut buf);
+            f.read_to_string(&mut buf)?;
             old_engine = Some(buf.as_str());
         }
         Err(_) => {
@@ -47,7 +47,7 @@ fn main() -> Result<()> {
         }
     }
 
-    let mut engine;
+    let engine;
     match (input_engine, old_engine) {
         (None, None) => engine = "kvs",
         (None, Some(e)) => {
@@ -76,14 +76,14 @@ fn main() -> Result<()> {
 
 fn run_engine(engine: &str, addr: &str) -> Result<()> {
     let mut f = File::create("ENGINE")?;
-    f.write(engine.as_bytes());
+    f.write_all(engine.as_bytes())?;
     match engine {
         "kvs" => {
-            let mut server = KvsServer::new((KvStore::open(env::current_dir()?)?));
+            let mut server = KvsServer::new(KvStore::open(env::current_dir()?)?);
             server.run(addr)
         }
         "sled" => {
-            let mut server = KvsServer::new((SledKvsEngine::open(env::current_dir()?)?));
+            let mut server = KvsServer::new(SledKvsEngine::open(env::current_dir()?)?);
             server.run(addr)
         }
         _ => panic!("invalid engine {}", engine),

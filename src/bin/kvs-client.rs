@@ -1,11 +1,8 @@
 use clap::{App, AppSettings, Arg, SubCommand};
-use kvs::{KvStore, KvsClient, Result};
-use std::path::Path;
-use std::process;
-#[macro_use]
-extern crate log;
+use kvs::{KvsClient, Result};
 use log::LevelFilter;
 use simplelog::*;
+use std::process;
 
 fn main() -> Result<()> {
     // TODO: The repeated args in subcommands look ugly. How to improve it?
@@ -81,7 +78,10 @@ fn main() -> Result<()> {
         ("rm", Some(matches)) => {
             let addr = matches.value_of("addr").expect("wtf");
             let mut client = KvsClient::connect(addr)?;
-            if let Err(_) = client.remove(matches.value_of("KEY").unwrap().to_owned()) {
+            if client
+                .remove(matches.value_of("KEY").unwrap().to_owned())
+                .is_err()
+            {
                 eprintln!("Key not found");
                 process::exit(1)
             }

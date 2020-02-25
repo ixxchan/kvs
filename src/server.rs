@@ -55,7 +55,7 @@ impl<E: KvsEngine> KvsServer<E> {
                     Err(e) => Response::Err(format!("{}", e)),
                 },
             };
-            serde_json::to_writer(&mut writer, &response);
+            serde_json::to_writer(&mut writer, &response)?;
             writer.flush()?;
             debug!("Send response to {}: {:?}", peer_addr, response);
         }

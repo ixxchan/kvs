@@ -9,7 +9,7 @@ pub use server::KvsServer;
 
 mod client;
 mod engines;
-mod server;
 mod protocol;
+mod server;
 
 pub type Result<T> = result::Result<T, Error>;
