@@ -1,13 +1,13 @@
-use clap::{App, AppSettings, Arg};
-use std::{env, fs::File, process};
-
-use kvs::{KvStore, KvsServer, Result, SledKvsEngine};
-
 #[macro_use]
 extern crate log;
-use env_logger::Env;
 
-use std::io::{Read, Write};
+use clap::{App, AppSettings, Arg};
+use env_logger::Env;
+use std::fs::File;
+use std::io::prelude::*;
+use std::{env, process};
+
+use kvs::{KvStore, KvsServer, Result, SledKvsEngine};
 
 fn main() -> Result<()> {
     let matches = App::new("kvs-server")
