@@ -4,8 +4,27 @@ use std::process;
 
 use kvs::{KvsClient, Result};
 
-fn main() -> Result<()> {
-    // TODO: The repeated args in subcommands look ugly. How to improve it?
+struct Opt {
+    addr: String,
+    cmd: Command,
+}
+
+enum Command {
+    Set { key: String, value: String },
+    Rm { key: String },
+    Get { key: String },
+}
+
+fn get_opt() -> Opt {
+    let addr;
+    let cmd;
+
+    let addr_arg = Arg::with_name("addr")
+        .long("addr")
+        .takes_value(true)
+        .value_name("IP-PORT")
+        .default_value("127.0.0.1:4000")
+        .help("the server address");
     let matches = App::new("kvs-client")
         .version(env!("CARGO_PKG_VERSION"))
         .author(env!("CARGO_PKG_AUTHORS"))
@@ -18,77 +37,63 @@ fn main() -> Result<()> {
                     "<KEY> 'the key you want to set'
                     <VALUE> 'the value you want to set to the key'",
                 )
-                .arg(
-                    Arg::with_name("addr")
-                        .long("addr")
-                        .takes_value(true)
-                        .value_name("IP-PORT")
-                        .default_value("127.0.0.1:4000")
-                        .help("the server address"),
-                ),
+                .arg(addr_arg.clone()),
             SubCommand::with_name("get")
                 .about("Get the string value of a given string key")
                 .arg_from_usage("<KEY> 'the key you want to look up'")
-                .arg(
-                    Arg::with_name("addr")
-                        .long("addr")
-                        .takes_value(true)
-                        .value_name("IP-PORT")
-                        .default_value("127.0.0.1:4000")
-                        .help("the server address"),
-                ),
+                .arg(addr_arg.clone()),
             SubCommand::with_name("rm")
                 .about("Remove a given key")
                 .arg_from_usage("<KEY> 'the key you want to remove'")
-                .arg(
-                    Arg::with_name("addr")
-                        .long("addr")
-                        .takes_value(true)
-                        .value_name("IP-PORT")
-                        .default_value("127.0.0.1:4000")
-                        .help("the server address"),
-                ),
+                .arg(addr_arg),
         ])
         .get_matches();
-
-    env_logger::from_env(Env::default().default_filter_or("debug")).init();
-
     match matches.subcommand() {
         ("set", Some(matches)) => {
-            let addr = matches.value_of("addr").expect("wtf");
-            let mut client = KvsClient::connect(addr)?;
-            client.set(
-                matches.value_of("KEY").unwrap().to_owned(),
-                matches.value_of("VALUE").unwrap().to_owned(),
-            )?
+            addr = matches.value_of("addr").expect("wtf").to_owned();
+            let key = matches.value_of("KEY").unwrap().to_owned();
+            let value = matches.value_of("VALUE").unwrap().to_owned();
+            cmd = Command::Set { key, value };
         }
         ("get", Some(matches)) => {
-            let addr = matches.value_of("addr").expect("wtf");
-            let mut client = KvsClient::connect(addr)?;
-            let value = client.get(matches.value_of("KEY").unwrap().to_owned())?;
-            match value {
-                Some(value) => {
-                    println!("{}", value);
-                }
-                None => {
-                    println!("Key not found");
-                }
-            }
+            addr = matches.value_of("addr").expect("wtf").to_owned();
+            let key = matches.value_of("KEY").unwrap().to_owned();
+            cmd = Command::Get { key };
         }
         ("rm", Some(matches)) => {
-            let addr = matches.value_of("addr").expect("wtf");
-            let mut client = KvsClient::connect(addr)?;
-            if client
-                .remove(matches.value_of("KEY").unwrap().to_owned())
-                .is_err()
-            {
-                eprintln!("Key not found");
-                process::exit(1)
-            }
+            addr = matches.value_of("addr").expect("wtf").to_owned();
+            let key = matches.value_of("KEY").unwrap().to_owned();
+            cmd = Command::Rm { key };
         }
         _ => {
-            panic!("no args");
+            eprintln!("No command specified");
+            process::exit(1);
         }
     };
-    Ok(())
+    Opt { addr, cmd }
+}
+
+fn run(opt: Opt) -> Result<()> {
+    let mut client = KvsClient::connect(opt.addr)?;
+    match opt.cmd {
+        Command::Set { key, value } => client.set(key, value),
+        Command::Rm { key } => client.remove(key),
+        Command::Get { key } => {
+            if let Some(value) = client.get(key)? {
+                println!("{}", value);
+            } else {
+                println!("Key not found");
+            }
+            Ok(())
+        }
+    }
+}
+
+fn main() {
+    env_logger::from_env(Env::default().default_filter_or("debug")).init();
+
+    if let Err(e) = run(get_opt()) {
+        eprintln!("{}", e);
+        process::exit(1);
+    }
 }
