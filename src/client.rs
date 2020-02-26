@@ -17,7 +17,6 @@ impl KvsClient {
     /// Connect to the address of a server.
     pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Self> {
         let writer = TcpStream::connect(addr)?;
-
         let reader = Deserializer::from_reader(writer.try_clone()?);
         debug!("Connected to {}", writer.peer_addr()?);
         Ok(KvsClient { reader, writer })
@@ -25,13 +24,11 @@ impl KvsClient {
 
     /// Set the value of a string key in the server.
     pub fn set(&mut self, key: String, value: String) -> Result<()> {
-        let request = Request::Set { key, value };
-        serde_json::to_writer(&mut self.writer, &request)?;
+        serde_json::to_writer(&mut self.writer, &Request::Set { key, value })?;
         self.writer.flush()?;
-        let response: Response = Response::deserialize(&mut self.reader)?;
-
-        match response {
-            Response::Ok(_) => Ok(()),
+        match Response::deserialize(&mut self.reader)? {
+            Response::Ok(None) => Ok(()),
+            Response::Ok(Some(v)) => Err(failure::err_msg(format!("Unexpected response: {:}", v))),
             Response::Err(msg) => Err(failure::err_msg(msg)),
         }
     }
@@ -40,20 +37,9 @@ impl KvsClient {
     ///
     /// Returns `Ok(None)` if the key is not found.
     pub fn get(&mut self, key: String) -> Result<Option<String>> {
-        let request = Request::Get { key };
-        serde_json::to_writer(&mut self.writer, &request)?;
+        serde_json::to_writer(&mut self.writer, &Request::Get { key })?;
         self.writer.flush()?;
-        debug!(
-            "Send request to {}: {:?}",
-            self.writer.peer_addr()?,
-            request
-        );
-
-        let response: Response = Response::deserialize(&mut self.reader)?;
-
-        debug!("Receive response {:?}", response);
-
-        match response {
+        match Response::deserialize(&mut self.reader)? {
             Response::Ok(value) => Ok(value),
             Response::Err(msg) => Err(failure::err_msg(msg)),
         }
@@ -63,12 +49,11 @@ impl KvsClient {
     ///
     /// Returns error if the key is not found.
     pub fn remove(&mut self, key: String) -> Result<()> {
-        let request = Request::Rm { key };
-        serde_json::to_writer(&mut self.writer, &request)?;
+        serde_json::to_writer(&mut self.writer, &Request::Rm { key })?;
         self.writer.flush()?;
-        let response = Response::deserialize(&mut self.reader)?;
-        match response {
-            Response::Ok(_) => Ok(()),
+        match Response::deserialize(&mut self.reader)? {
+            Response::Ok(None) => Ok(()),
+            Response::Ok(Some(v)) => Err(failure::err_msg(format!("Unexpected response: {:}", v))),
             Response::Err(msg) => Err(failure::err_msg(msg)),
         }
     }
