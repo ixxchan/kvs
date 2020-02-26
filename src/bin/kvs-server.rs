@@ -9,7 +9,7 @@ use std::{env, process};
 
 use kvs::{KvStore, KvsServer, Result, SledKvsEngine};
 
-fn main() -> Result<()> {
+fn main() {
     let matches = App::new("kvs-server")
         .version(env!("CARGO_PKG_VERSION"))
         .author(env!("CARGO_PKG_AUTHORS"))
@@ -33,15 +33,32 @@ fn main() -> Result<()> {
         )
         .get_matches();
 
-    let addr = matches.value_of("addr").expect("wtf");
+    let addr = matches.value_of("addr").unwrap();
     let input_engine = matches.value_of("engine");
+    let engine = &get_engine(input_engine);
 
+    env_logger::from_env(Env::default().default_filter_or("info")).init();
+
+    info!("kvs-server {}", env!("CARGO_PKG_VERSION"));
+    info!("Storage engine: {}", engine);
+    info!("Listening on {}", addr);
+
+    if let Err(e) = run_engine(engine, addr) {
+        eprintln!("{}", e);
+        process::exit(1);
+    }
+}
+
+fn get_engine(input_engine: Option<&str>) -> String {
     let mut buf = String::new();
     let old_engine;
     match File::open("ENGINE") {
         Ok(mut f) => {
-            f.read_to_string(&mut buf)?;
-            old_engine = Some(buf.as_str());
+            if f.read_to_string(&mut buf).is_ok() {
+                old_engine = Some(buf.as_str());
+            } else {
+                old_engine = None;
+            }
         }
         Err(_) => {
             old_engine = None;
@@ -66,14 +83,7 @@ fn main() -> Result<()> {
             }
         }
     }
-
-    env_logger::from_env(Env::default().default_filter_or("info")).init();
-
-    info!("kvs-server {}", env!("CARGO_PKG_VERSION"));
-    info!("Storage engine: {}", engine);
-    info!("Listening on {}", addr);
-
-    run_engine(engine, addr)
+    engine.to_owned()
 }
 
 fn run_engine(engine: &str, addr: &str) -> Result<()> {
