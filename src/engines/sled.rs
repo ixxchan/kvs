@@ -3,6 +3,7 @@ use std::path::Path;
 use super::KvsEngine;
 use crate::Result;
 
+/// Wrapper of `sled::Db`.
 pub struct SledKvsEngine {
     db: sled::Db,
 }
@@ -33,6 +34,7 @@ impl KvsEngine for SledKvsEngine {
 }
 
 impl SledKvsEngine {
+    /// Opens an existed sled instance or creates a new one at the specified path.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         Ok(SledKvsEngine {
             db: sled::open(path)?,

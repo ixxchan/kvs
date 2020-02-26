@@ -7,13 +7,14 @@ use std::net::{TcpStream, ToSocketAddrs};
 use crate::protocol::{Request, Response};
 use crate::Result;
 
+/// K-V store client.
 pub struct KvsClient {
     reader: Deserializer<IoRead<TcpStream>>,
     writer: TcpStream,
 }
 
 impl KvsClient {
-    /// Connect to the address of a server
+    /// Connect to the address of a server.
     pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Self> {
         let writer = TcpStream::connect(addr)?;
 
@@ -22,7 +23,7 @@ impl KvsClient {
         Ok(KvsClient { reader, writer })
     }
 
-    /// Set the value of a string key in the server
+    /// Set the value of a string key in the server.
     pub fn set(&mut self, key: String, value: String) -> Result<()> {
         let request = Request::Set { key, value };
         serde_json::to_writer(&mut self.writer, &request)?;
@@ -35,7 +36,9 @@ impl KvsClient {
         }
     }
 
-    /// Get the string value of a given string key from the server
+    /// Get the string value of a given string key from the server.
+    ///
+    /// Returns `Ok(None)` if the key is not found.
     pub fn get(&mut self, key: String) -> Result<Option<String>> {
         let request = Request::Get { key };
         serde_json::to_writer(&mut self.writer, &request)?;
@@ -56,7 +59,9 @@ impl KvsClient {
         }
     }
 
-    /// Remove a given key in the server
+    /// Remove a given key in the server.
+    ///
+    /// Returns error if the key is not found.
     pub fn remove(&mut self, key: String) -> Result<()> {
         let request = Request::Rm { key };
         serde_json::to_writer(&mut self.writer, &request)?;

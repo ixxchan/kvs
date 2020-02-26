@@ -5,6 +5,7 @@ use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use crate::protocol::{Request, Response};
 use crate::{KvsEngine, Result};
 
+/// K-V store server.
 pub struct KvsServer<E: KvsEngine> {
     engine: E,
 }

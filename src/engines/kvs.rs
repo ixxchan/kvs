@@ -1,4 +1,3 @@
-//! A key-value store
 use serde::{Deserialize, Serialize};
 use serde_json::Deserializer;
 use std::collections::HashMap;
@@ -12,6 +11,19 @@ use super::KvsEngine;
 use crate::Result;
 
 const COMPACTION_THRESHOLD: u64 = 1024;
+
+/// The key-value database. Log-structured file I/O is used internally for persistant storage.
+/// The serialization format is JSON because it is human-readable and the most generally used.
+pub struct KvStore {
+    // index map
+    imap: HashMap<String, LogIndex>,
+    cache: HashMap<String, String>,
+    log_dir: PathBuf,
+    writer: Option<LogWriter>,
+    //reader: LogReader,
+    // number of redundant logs
+    dead: u64,
+}
 
 impl KvsEngine for KvStore {
     fn set(&mut self, key: String, value: String) -> Result<()> {
@@ -82,19 +94,6 @@ impl KvsEngine for KvStore {
     }
 }
 
-/// The key-value database. Log-structured file I/O is used internally for persistant storage.
-/// The serialization format is JSON because it is human-readable and the most generally used.
-pub struct KvStore {
-    // index map
-    imap: HashMap<String, LogIndex>,
-    cache: HashMap<String, String>,
-    log_dir: PathBuf,
-    writer: Option<LogWriter>,
-    //reader: LogReader,
-    // number of redundant logs
-    dead: u64,
-}
-
 impl KvStore {
     /// Restores an instance of the database located in some direcotry,
     /// or create a new one if no logs exist in this directory
@@ -134,7 +133,7 @@ impl KvStore {
         Ok(())
     }
 
-    /// Compacting the log
+    /// Compacting the log.
     pub fn compact(&mut self) -> Result<()> {
         let f = File::create(self.log_dir.join("compacted.json"))?;
         let mut compacted_writer = LogWriter::new(f);
@@ -205,7 +204,6 @@ enum Command {
     Rm { key: String },
 }
 
-// type LogReader = BufReader<File>;
 // Record the reading position which is used when loading log file
 struct LogReader {
     reader: BufReader<File>,

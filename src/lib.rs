@@ -1,3 +1,6 @@
+//! A simple K-V store library which provides pluggable storage engines and
+//! client/server functionality.
+
 #[macro_use]
 extern crate log;
 
