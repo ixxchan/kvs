@@ -1,13 +1,15 @@
 //! A key-value store
-use super::KvsEngine;
-use crate::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Deserializer;
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, prelude::*, BufReader, BufWriter, ErrorKind, Seek, SeekFrom};
+use std::io::prelude::*;
+use std::io::{self, BufReader, BufWriter, ErrorKind, Seek, SeekFrom};
 use std::mem;
 use std::path::{Path, PathBuf};
+
+use super::KvsEngine;
+use crate::Result;
 
 const COMPACTION_THRESHOLD: u64 = 1024;
 

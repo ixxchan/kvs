@@ -1,11 +1,9 @@
-use crate::{
-    protocol::{Request, Response},
-    KvsEngine, Result,
-};
-
 use serde_json::Deserializer;
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
+
+use crate::protocol::{Request, Response};
+use crate::{KvsEngine, Result};
 
 pub struct KvsServer<E: KvsEngine> {
     engine: E,

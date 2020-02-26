@@ -1,12 +1,11 @@
-use crate::{
-    protocol::{Request, Response},
-    Result,
-};
 use serde::Deserialize;
 use serde_json::de::IoRead;
 use serde_json::Deserializer;
 use std::io::prelude::*;
 use std::net::{TcpStream, ToSocketAddrs};
+
+use crate::protocol::{Request, Response};
+use crate::Result;
 
 pub struct KvsClient {
     reader: Deserializer<IoRead<TcpStream>>,

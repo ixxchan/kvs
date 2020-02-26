@@ -1,6 +1,7 @@
 use clap::{App, AppSettings, Arg};
-use kvs::*;
 use std::{env, fs::File, process};
+
+use kvs::{KvStore, KvsServer, Result, SledKvsEngine};
 
 #[macro_use]
 extern crate log;

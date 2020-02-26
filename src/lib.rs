@@ -1,7 +1,8 @@
-use failure::Error;
-use std::result;
 #[macro_use]
 extern crate log;
+
+use failure::Error;
+use std::result;
 
 pub use client::KvsClient;
 pub use engines::{KvStore, KvsEngine, SledKvsEngine};

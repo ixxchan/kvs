@@ -1,7 +1,8 @@
 use clap::{App, AppSettings, Arg, SubCommand};
 use env_logger::Env;
-use kvs::{KvsClient, Result};
 use std::process;
+
+use kvs::{KvsClient, Result};
 
 fn main() -> Result<()> {
     // TODO: The repeated args in subcommands look ugly. How to improve it?
