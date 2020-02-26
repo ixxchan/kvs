@@ -4,8 +4,8 @@ use std::{env, fs::File, process};
 
 #[macro_use]
 extern crate log;
-use log::LevelFilter;
-use simplelog::*;
+use env_logger::Env;
+
 use std::io::{Read, Write};
 
 fn main() -> Result<()> {
@@ -66,7 +66,8 @@ fn main() -> Result<()> {
         }
     }
 
-    TermLogger::init(LevelFilter::Debug, Config::default(), TerminalMode::Stderr)?;
+    env_logger::from_env(Env::default().default_filter_or("info")).init();
+
     info!("kvs-server {}", env!("CARGO_PKG_VERSION"));
     info!("Storage engine: {}", engine);
     info!("Listening on {}", addr);

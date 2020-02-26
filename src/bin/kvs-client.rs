@@ -1,7 +1,6 @@
 use clap::{App, AppSettings, Arg, SubCommand};
+use env_logger::Env;
 use kvs::{KvsClient, Result};
-use log::LevelFilter;
-use simplelog::*;
 use std::process;
 
 fn main() -> Result<()> {
@@ -51,7 +50,7 @@ fn main() -> Result<()> {
         ])
         .get_matches();
 
-    TermLogger::init(LevelFilter::Debug, Config::default(), TerminalMode::Stderr)?;
+    env_logger::from_env(Env::default().default_filter_or("debug")).init();
 
     match matches.subcommand() {
         ("set", Some(matches)) => {
