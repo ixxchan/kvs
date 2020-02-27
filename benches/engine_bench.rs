@@ -5,10 +5,8 @@ use tempfile::TempDir;
 use kvs::{KvStore, KvsEngine, SledKvsEngine};
 
 pub fn write_bench(c: &mut Criterion) {
+    let store_size = 1 << 12;
     let mut group = c.benchmark_group("Write Group");
-
-    let store_size = 1 << 20;
-
     group.bench_function("kvs_write", |b| {
         b.iter_batched(
             || {
@@ -41,15 +39,12 @@ pub fn write_bench(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-
     group.finish();
 }
 
 pub fn read_bench(c: &mut Criterion) {
+    let store_size = 1 << 12;
     let mut group = c.benchmark_group("Read Group");
-
-    let store_size = 1 << 20;
-
     group.bench_function("kvs_read", |b| {
         let temp_dir = TempDir::new().unwrap();
         let mut engine = KvStore::open(temp_dir.path()).unwrap();
@@ -58,7 +53,7 @@ pub fn read_bench(c: &mut Criterion) {
                 .set(format!("key{}", i), format!("value{}", i))
                 .unwrap();
         }
-        let mut rng = thread_rng();
+        let mut rng = SmallRng::from_seed([0; 16]);
         b.iter(|| {
             engine
                 .get(format!("key{}", rng.gen_range(1, store_size)))
@@ -73,14 +68,13 @@ pub fn read_bench(c: &mut Criterion) {
                 .set(format!("key{}", i), format!("value{}", i))
                 .unwrap();
         }
-        let mut rng = thread_rng();
+        let mut rng = SmallRng::from_seed([0; 16]);
         b.iter(|| {
             engine
                 .get(format!("key{}", rng.gen_range(1, store_size)))
                 .unwrap()
         })
     });
-
     group.finish();
 }
 

@@ -4,7 +4,6 @@ on: [push]
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
     env:
       RUST_BACKTRACE: 1
@@ -16,3 +15,5 @@ jobs:
       run: cargo test --verbose
     - name: Clippy
       run: cargo clippy -- -D warnings
+    - name: Bench
+      run: cargo bench
