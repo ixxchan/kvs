@@ -168,7 +168,7 @@ impl Drop for KvStore {
     fn drop(&mut self) {
         if self.save_index().is_err() {
             // fail to save index
-            fs::remove_file(self.log_dir.join("index.json")).unwrap();
+            let _ = fs::remove_file(self.log_dir.join("index.json"));
         }
     }
 }
