@@ -5,7 +5,7 @@ use tempfile::TempDir;
 use kvs::{KvStore, KvsEngine, SledKvsEngine};
 
 pub fn write_bench(c: &mut Criterion) {
-    let store_size = 1 << 12;
+    let store_size = 1 << 10;
     let mut group = c.benchmark_group("Write Group");
     group.bench_function("kvs_write", |b| {
         b.iter_batched(
@@ -43,7 +43,7 @@ pub fn write_bench(c: &mut Criterion) {
 }
 
 pub fn read_bench(c: &mut Criterion) {
-    let store_size = 1 << 12;
+    let store_size = 1 << 10;
     let mut group = c.benchmark_group("Read Group");
     group.bench_function("kvs_read", |b| {
         let temp_dir = TempDir::new().unwrap();
