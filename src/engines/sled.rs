@@ -4,28 +4,19 @@ use super::KvsEngine;
 use crate::Result;
 
 /// Wrapper of `sled::Db`.
+#[derive(Clone)]
 pub struct SledKvsEngine {
     db: sled::Db,
 }
 
-impl Clone for SledKvsEngine {
-    fn clone(&self) -> Self {
-        unimplemented!()
-    }
-}
-
 impl KvsEngine for SledKvsEngine {
     fn set(&self, key: String, value: String) -> Result<()> {
-        unimplemented!();
-
         self.db.insert(key, value.into_bytes())?;
         self.db.flush()?;
         Ok(())
     }
 
     fn get(&self, key: String) -> Result<Option<String>> {
-        unimplemented!();
-
         Ok(self
             .db
             .get(key)?
@@ -34,8 +25,6 @@ impl KvsEngine for SledKvsEngine {
     }
 
     fn remove(&self, key: String) -> Result<()> {
-        unimplemented!();
-
         if self.db.remove(key)?.is_none() {
             Err(failure::err_msg("Key not found"))
         } else {
