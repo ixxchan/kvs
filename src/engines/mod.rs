@@ -5,8 +5,8 @@ use crate::Result;
 pub use self::kvs::KvStore;
 pub use self::sled::SledKvsEngine;
 
-/// Trait for a K-V store engine.
-pub trait KvsEngine: Clone {
+/// Trait for a shared K-V store engine.
+pub trait KvsEngine: Clone + Send + 'static {
     /// Sets the value of a string key to a string.
     fn set(&self, key: String, value: String) -> Result<()>;
 

@@ -6,6 +6,7 @@ use std::io::prelude::*;
 use std::io::{self, BufReader, BufWriter, ErrorKind, Seek, SeekFrom};
 use std::mem;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, RwLock};
 
 use super::KvsEngine;
 use crate::Result;
@@ -14,28 +15,21 @@ const COMPACTION_THRESHOLD: u64 = 1024;
 
 /// The key-value database. Log-structured file I/O is used internally for persistant storage.
 /// The serialization format is JSON because it is human-readable and the most generally used.
+#[derive(Clone)]
 pub struct KvStore {
     // index map
-    imap: HashMap<String, LogIndex>,
-    cache: HashMap<String, String>,
-    log_dir: PathBuf,
-    writer: Option<LogWriter>,
+    imap: Arc<RwLock<HashMap<String, LogIndex>>>,
+    cache: Arc<RwLock<HashMap<String, String>>>,
+    log_dir: Arc<PathBuf>,
+    writer: Arc<Mutex<LogWriter>>,
     //reader: LogReader,
     // number of redundant logs
-    dead: u64,
-}
-
-impl Clone for KvStore {
-    fn clone(&self) -> Self {
-        unimplemented!()
-    }
+    dead: Arc<Mutex<u64>>,
 }
 
 impl KvsEngine for KvStore {
     fn set(&self, key: String, value: String) -> Result<()> {
-        unimplemented!();
-
-        let mut writer = self.writer.take().unwrap();
+        let mut writer = self.writer.lock().unwrap();
 
         let start_pos = writer.pos;
         let cmd = Command::Set {
@@ -43,22 +37,20 @@ impl KvsEngine for KvStore {
             value: value.clone(),
         };
 
-        serde_json::to_writer(&mut writer, &cmd)?;
+        serde_json::to_writer(&mut *writer, &cmd)?;
         writer.flush()?;
 
         let len = writer.pos - start_pos;
-        self.writer = Some(writer);
-        self.cache.insert(key.clone(), value);
-        if self
-            .imap
-            .insert(key, LogIndex::new(start_pos, len))
-            .is_some()
-        {
-            self.dead += 1;
+
+        let mut cache = self.cache.write().unwrap();
+        let mut imap = self.imap.write().unwrap();
+        cache.insert(key.clone(), value);
+        if imap.insert(key, LogIndex::new(start_pos, len)).is_some() {
+            *self.dead.lock().unwrap() += 1;
         }
 
         // kill zombies
-        if self.dead >= COMPACTION_THRESHOLD {
+        if *self.dead.lock().unwrap() >= COMPACTION_THRESHOLD {
             self.compact()?;
         }
 
@@ -66,19 +58,17 @@ impl KvsEngine for KvStore {
     }
 
     fn get(&self, key: String) -> Result<Option<String>> {
-        unimplemented!();
-
-        if let Some(value) = self.cache.get(&key) {
+        if let Some(value) = self.cache.read().unwrap().get(&key) {
             return Ok(Some(value.clone()));
         }
-        match self.imap.get(&key) {
+        match self.imap.read().unwrap().get(&key) {
             Some(index) => {
                 let mut reader = LogReader::new(File::open(self.log_dir.join("log.json"))?);
                 reader.seek(SeekFrom::Start(index.pos))?;
                 let reader = reader.take(index.len);
                 match serde_json::from_reader(reader)? {
                     Command::Set { key: k, value: v } if key == k => {
-                        self.cache.insert(key, v.clone());
+                        self.cache.write().unwrap().insert(key, v.clone());
                         Ok(Some(v))
                     }
                     c => panic!("inconsistent command {:?}", c),
@@ -89,19 +79,16 @@ impl KvsEngine for KvStore {
     }
 
     fn remove(&self, key: String) -> Result<()> {
-        unimplemented!();
-
-        if self.imap.remove(&key).is_none() {
+        if self.imap.write().unwrap().remove(&key).is_none() {
             return Err(failure::err_msg("Key not found"));
         }
-        self.dead += 1;
-        self.cache.remove(&key);
+        *self.dead.lock().unwrap() += 1;
+        self.cache.write().unwrap().remove(&key);
 
         let cmd = Command::Rm { key };
-        let mut writer = self.writer.take().unwrap();
-        serde_json::to_writer(&mut writer, &cmd)?;
+        let mut writer = self.writer.lock().unwrap();
+        serde_json::to_writer(&mut *writer, &cmd)?;
         writer.flush()?;
-        self.writer = Some(writer);
         Ok(())
     }
 }
@@ -110,22 +97,28 @@ impl KvStore {
     /// Restores an instance of the database located in some direcotry,
     /// or create a new one if no logs exist in this directory
     pub fn open(path: impl Into<PathBuf>) -> Result<Self> {
-        let path = path.into();
-        std::fs::create_dir_all(&path)?;
-        let mut imap = HashMap::new();
-        let cache = HashMap::new();
+        let path = Arc::new(path.into());
+        std::fs::create_dir_all(&*path)?;
+        let mut imap = Arc::new(RwLock::new(HashMap::new()));
+        let cache = Arc::new(RwLock::new(HashMap::new()));
         let f = OpenOptions::new()
             .create(true)
             .append(true)
             .open(path.join("log.json"))?;
-        let writer = Some(LogWriter::new(f));
+        let writer = Arc::new(Mutex::new(LogWriter::new(f)));
         //let reader = LogReader::new(File::open(path.join("log.json")).unwrap());
 
         match File::open(path.join("index.json")) {
             // restore the in-memory index from the index file if it exists
-            Ok(idx_file) => imap = serde_json::from_reader(BufReader::new(idx_file))?,
+            Ok(idx_file) => {
+                imap = Arc::new(RwLock::new(serde_json::from_reader(BufReader::new(
+                    idx_file,
+                ))?))
+            }
             // read the log to restore the database in the memory
-            Err(e) if e.kind() == ErrorKind::NotFound => load_log(&path, &mut imap)?,
+            Err(e) if e.kind() == ErrorKind::NotFound => {
+                KvStore::load_log(&path, &mut imap.write().unwrap())?
+            }
             Err(e) => return Err(e.into()),
         }
 
@@ -135,21 +128,21 @@ impl KvStore {
             log_dir: path,
             writer,
             //reader,
-            dead: 0,
+            dead: Arc::new(Mutex::new(0)),
         })
     }
 
     fn save_index(&self) -> Result<()> {
         let idx_file = File::create(self.log_dir.join("index.json"))?;
-        serde_json::to_writer(idx_file, &self.imap)?;
+        serde_json::to_writer(idx_file, &*self.imap.read().unwrap())?;
         Ok(())
     }
 
     /// Compacting the log.
-    pub fn compact(&mut self) -> Result<()> {
+    pub fn compact(&self) -> Result<()> {
         let f = File::create(self.log_dir.join("compacted.json"))?;
         let mut compacted_writer = LogWriter::new(f);
-        for index in self.imap.values_mut() {
+        for index in self.imap.write().unwrap().values_mut() {
             // It seems inefficient to create a reader in every iteration
             let mut reader = LogReader::new(File::open(self.log_dir.join("log.json"))?);
             reader.seek(SeekFrom::Start(index.pos))?;
@@ -159,9 +152,9 @@ impl KvStore {
         }
 
         // close file handlers
-        let writer = self.writer.take();
+        let mut writer = self.writer.lock().unwrap();
         mem::drop(compacted_writer);
-        mem::drop(writer);
+        *writer = LogWriter::new(tempfile::tempfile()?);
         // replace the original log with the compacted log
         fs::rename(
             self.log_dir.join("compacted.json"),
@@ -171,8 +164,33 @@ impl KvStore {
         let f = OpenOptions::new()
             .append(true)
             .open(self.log_dir.join("log.json"))?;
-        self.writer = Some(LogWriter::new(f));
+        *writer = LogWriter::new(f);
         Ok(())
+    }
+
+    fn load_log(path: &Path, map: &mut HashMap<String, LogIndex>) -> Result<()> {
+        let mut reader = LogReader::new(File::open(path.join("log.json"))?);
+        loop {
+            let start_pos = reader.pos;
+            match Deserializer::from_reader(&mut reader)
+                .into_iter::<Command>()
+                .next()
+            {
+                Some(cmd) => {
+                    let cmd = cmd?;
+                    let len = reader.pos - start_pos;
+                    match cmd {
+                        Command::Set { key, .. } => {
+                            map.insert(key, LogIndex::new(start_pos, len));
+                        }
+                        Command::Rm { key } => {
+                            map.remove(&key);
+                        }
+                    }
+                }
+                None => return Ok(()),
+            }
+        }
     }
 }
 
@@ -181,31 +199,6 @@ impl Drop for KvStore {
         if self.save_index().is_err() {
             // fail to save index
             let _ = fs::remove_file(self.log_dir.join("index.json"));
-        }
-    }
-}
-
-fn load_log(path: &Path, map: &mut HashMap<String, LogIndex>) -> Result<()> {
-    let mut reader = LogReader::new(File::open(path.join("log.json"))?);
-    loop {
-        let start_pos = reader.pos;
-        match Deserializer::from_reader(&mut reader)
-            .into_iter::<Command>()
-            .next()
-        {
-            Some(cmd) => {
-                let cmd = cmd?;
-                let len = reader.pos - start_pos;
-                match cmd {
-                    Command::Set { key, .. } => {
-                        map.insert(key, LogIndex::new(start_pos, len));
-                    }
-                    Command::Rm { key } => {
-                        map.remove(&key);
-                    }
-                }
-            }
-            None => return Ok(()),
         }
     }
 }
