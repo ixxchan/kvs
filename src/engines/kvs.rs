@@ -25,8 +25,16 @@ pub struct KvStore {
     dead: u64,
 }
 
+impl Clone for KvStore {
+    fn clone(&self) -> Self {
+        unimplemented!()
+    }
+}
+
 impl KvsEngine for KvStore {
-    fn set(&mut self, key: String, value: String) -> Result<()> {
+    fn set(&self, key: String, value: String) -> Result<()> {
+        unimplemented!();
+
         let mut writer = self.writer.take().unwrap();
 
         let start_pos = writer.pos;
@@ -57,7 +65,9 @@ impl KvsEngine for KvStore {
         Ok(())
     }
 
-    fn get(&mut self, key: String) -> Result<Option<String>> {
+    fn get(&self, key: String) -> Result<Option<String>> {
+        unimplemented!();
+
         if let Some(value) = self.cache.get(&key) {
             return Ok(Some(value.clone()));
         }
@@ -78,7 +88,9 @@ impl KvsEngine for KvStore {
         }
     }
 
-    fn remove(&mut self, key: String) -> Result<()> {
+    fn remove(&self, key: String) -> Result<()> {
+        unimplemented!();
+
         if self.imap.remove(&key).is_none() {
             return Err(failure::err_msg("Key not found"));
         }

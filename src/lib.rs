@@ -15,5 +15,6 @@ mod client;
 mod engines;
 mod protocol;
 mod server;
+pub mod thread_pool;
 
 pub type Result<T> = result::Result<T, Error>;

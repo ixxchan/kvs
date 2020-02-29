@@ -8,14 +8,24 @@ pub struct SledKvsEngine {
     db: sled::Db,
 }
 
+impl Clone for SledKvsEngine {
+    fn clone(&self) -> Self {
+        unimplemented!()
+    }
+}
+
 impl KvsEngine for SledKvsEngine {
-    fn set(&mut self, key: String, value: String) -> Result<()> {
+    fn set(&self, key: String, value: String) -> Result<()> {
+        unimplemented!();
+
         self.db.insert(key, value.into_bytes())?;
         self.db.flush()?;
         Ok(())
     }
 
-    fn get(&mut self, key: String) -> Result<Option<String>> {
+    fn get(&self, key: String) -> Result<Option<String>> {
+        unimplemented!();
+
         Ok(self
             .db
             .get(key)?
@@ -23,7 +33,9 @@ impl KvsEngine for SledKvsEngine {
             .transpose()?)
     }
 
-    fn remove(&mut self, key: String) -> Result<()> {
+    fn remove(&self, key: String) -> Result<()> {
+        unimplemented!();
+
         if self.db.remove(key)?.is_none() {
             Err(failure::err_msg("Key not found"))
         } else {
