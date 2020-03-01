@@ -7,18 +7,15 @@ use crate::thread_pool::*;
 use crate::{KvsEngine, Result};
 
 /// K-V store server.
-pub struct KvsServer<E: KvsEngine> {
+pub struct KvsServer<E: KvsEngine, P: ThreadPool> {
     engine: E,
-    pool: NaiveThreadPool,
+    pool: P,
 }
 
-impl<E: KvsEngine> KvsServer<E> {
+impl<E: KvsEngine, P: ThreadPool> KvsServer<E, P> {
     /// Create a `KvsServer` with given store engine
-    pub fn new(engine: E) -> Self {
-        KvsServer {
-            engine,
-            pool: NaiveThreadPool::new(6).unwrap(),
-        }
+    pub fn new(engine: E, pool: P) -> Self {
+        KvsServer { engine, pool }
     }
 
     pub fn run<A: ToSocketAddrs>(&mut self, addr: A) -> Result<()> {
@@ -29,7 +26,7 @@ impl<E: KvsEngine> KvsServer<E> {
                 Ok(stream) => {
                     let engine = self.engine.clone();
                     self.pool.spawn(|| {
-                        if let Err(e) = KvsServer::handle_client(engine, stream) {
+                        if let Err(e) = handle_client(engine, stream) {
                             error!("Error when serving client: {}", e);
                         }
                     })
@@ -39,34 +36,34 @@ impl<E: KvsEngine> KvsServer<E> {
         }
         Ok(())
     }
+}
 
-    fn handle_client(engine: E, stream: TcpStream) -> Result<()> {
-        let mut writer = stream.try_clone()?;
-        let peer_addr = stream.peer_addr()?;
-        debug!("Connected to {}", peer_addr);
+fn handle_client<E: KvsEngine>(engine: E, stream: TcpStream) -> Result<()> {
+    let mut writer = stream.try_clone()?;
+    let peer_addr = stream.peer_addr()?;
+    debug!("Connected to {}", peer_addr);
 
-        for request in Deserializer::from_reader(stream).into_iter::<Request>() {
-            let request = request?;
-            debug!("Receive request from {}: {:?}", peer_addr, request);
-            let response = match request {
-                Request::Get { key } => match engine.get(key) {
-                    Ok(value) => Response::Ok(value),
-                    Err(e) => Response::Err(format!("{}", e)),
-                },
-                Request::Set { key, value } => match engine.set(key, value) {
-                    Ok(()) => Response::Ok(None),
-                    Err(e) => Response::Err(format!("{}", e)),
-                },
-                Request::Rm { key } => match engine.remove(key) {
-                    Ok(()) => Response::Ok(None),
-                    Err(e) => Response::Err(format!("{}", e)),
-                },
-            };
-            serde_json::to_writer(&mut writer, &response)?;
-            writer.flush()?;
-            debug!("Send response to {}: {:?}", peer_addr, response);
-        }
-
-        Ok(())
+    for request in Deserializer::from_reader(stream).into_iter::<Request>() {
+        let request = request?;
+        debug!("Receive request from {}: {:?}", peer_addr, request);
+        let response = match request {
+            Request::Get { key } => match engine.get(key) {
+                Ok(value) => Response::Ok(value),
+                Err(e) => Response::Err(format!("{}", e)),
+            },
+            Request::Set { key, value } => match engine.set(key, value) {
+                Ok(()) => Response::Ok(None),
+                Err(e) => Response::Err(format!("{}", e)),
+            },
+            Request::Rm { key } => match engine.remove(key) {
+                Ok(()) => Response::Ok(None),
+                Err(e) => Response::Err(format!("{}", e)),
+            },
+        };
+        serde_json::to_writer(&mut writer, &response)?;
+        writer.flush()?;
+        debug!("Send response to {}: {:?}", peer_addr, response);
     }
+
+    Ok(())
 }

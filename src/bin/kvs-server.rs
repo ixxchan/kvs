@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::{env, process};
 
+use kvs::thread_pool::*;
 use kvs::{KvStore, KvsServer, Result, SledKvsEngine};
 
 fn main() {
@@ -89,13 +90,14 @@ fn get_engine(input_engine: Option<&str>) -> String {
 fn run_engine(engine: &str, addr: &str) -> Result<()> {
     let mut f = File::create("ENGINE")?;
     f.write_all(engine.as_bytes())?;
+    let pool = SharedQueueThreadPool::new(num_cpus::get() as u32)?;
     match engine {
         "kvs" => {
-            let mut server = KvsServer::new(KvStore::open(env::current_dir()?)?);
+            let mut server = KvsServer::new(KvStore::open(env::current_dir()?)?, pool);
             server.run(addr)
         }
         "sled" => {
-            let mut server = KvsServer::new(SledKvsEngine::open(env::current_dir()?)?);
+            let mut server = KvsServer::new(SledKvsEngine::open(env::current_dir()?)?, pool);
             server.run(addr)
         }
         _ => panic!("invalid engine {}", engine),
