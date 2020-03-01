@@ -24,7 +24,7 @@ pub fn write_queued_kvstore(c: &mut Criterion) {
                 let wg = WaitGroup::new();
                 for i in 0..1000 {
                     let wg = wg.clone();
-                    client_pool.spawn(|| {
+                    client_pool.spawn(move || {
                         let mut client = KvsClient::connect("127.0.0.1:4006").unwrap();
                         assert!(client.set(format!("key{}", i), "value".to_owned()).is_ok());
                         drop(wg);
@@ -57,9 +57,12 @@ pub fn read_queued_kvstore(c: &mut Criterion) {
                 let wg = WaitGroup::new();
                 for i in 0..1000 {
                     let wg = wg.clone();
-                    client_pool.spawn(|| {
+                    client_pool.spawn(move || {
                         let mut client = KvsClient::connect("127.0.0.1:4006").unwrap();
-                        assert_eq!(client.get(format!("key{}", i)), "value".to_owned());
+                        assert_eq!(
+                            client.get(format!("key{}", i)).unwrap(),
+                            (Some("value".to_owned()))
+                        );
                         drop(wg);
                     })
                 }
