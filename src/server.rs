@@ -20,7 +20,7 @@ impl<E: KvsEngine, P: ThreadPool> KvsServer<E, P> {
 
     pub fn run<A: ToSocketAddrs>(&mut self, addr: A) -> Result<()> {
         let listener = TcpListener::bind(addr)?;
-
+        info!("KvsServer: start working!");
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {

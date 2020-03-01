@@ -28,9 +28,9 @@ tempfile = "3.0.7"
 walkdir = "2.2.7"
 panic-control = "0.1.4"
 
-[[bench]]
-name = "engine_bench"
-harness = false
+#[[bench]]
+#name = "engine_bench"
+#harness = false
 
 [[bench]]
 name = "pool_bench"
