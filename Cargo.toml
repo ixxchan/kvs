@@ -32,9 +32,9 @@ panic-control = "0.1.4"
 #name = "engine_bench"
 #harness = false
 
-[[bench]]
-name = "pool_bench"
-harness = false
+#[[bench]]
+#name = "pool_bench"
+#harness = false
 
 # The development profile, used for `cargo build`
 [profile.dev]
