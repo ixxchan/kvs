@@ -1,4 +1,4 @@
-use crossbeam::crossbeam_channel::{bounded, Sender};
+use crossbeam::crossbeam_channel::{bounded, Receiver, Sender};
 use std::panic::{self, AssertUnwindSafe};
 use std::thread;
 
@@ -10,7 +10,10 @@ enum ThreadPoolMessage {
     Shutdown,
 }
 
-pub struct SharedQueueThreadPool(Sender<ThreadPoolMessage>);
+pub struct SharedQueueThreadPool {
+    sender: Sender<ThreadPoolMessage>,
+    threads: u32,
+}
 
 impl ThreadPool for SharedQueueThreadPool {
     fn new(threads: u32) -> Result<Self> {
@@ -18,25 +21,54 @@ impl ThreadPool for SharedQueueThreadPool {
         for _ in 0..threads {
             let r = r.clone();
             thread::spawn(move || {
-                while let Ok(job) = r.recv() {
-                    match job {
-                        ThreadPoolMessage::RunJob(job) => {
-                            let _ = panic::catch_unwind(AssertUnwindSafe(job));
-                        }
-                        ThreadPoolMessage::Shutdown => {}
-                    }
-                }
+                Worker(r).run();
             });
         }
-        Ok(SharedQueueThreadPool(s))
+        Ok(SharedQueueThreadPool { sender: s, threads })
     }
 
     fn spawn<F>(&self, job: F)
     where
         F: FnOnce() + Send + 'static,
     {
-        self.0
+        self.sender
             .send(ThreadPoolMessage::RunJob(Box::new(job)))
             .unwrap();
+    }
+}
+
+impl Drop for SharedQueueThreadPool {
+    fn drop(&mut self) {
+        for _ in 0..self.threads {
+            self.sender.send(ThreadPoolMessage::Shutdown).unwrap();
+        }
+    }
+}
+
+struct Worker(Receiver<ThreadPoolMessage>);
+
+impl Worker {
+    pub fn run(self) {
+        while let Ok(job) = self.0.recv() {
+            match job {
+                ThreadPoolMessage::RunJob(job) => {
+                    job();
+                }
+                ThreadPoolMessage::Shutdown => {
+                    break;
+                }
+            }
+        }
+    }
+}
+
+impl Drop for Worker {
+    fn drop(&mut self) {
+        if thread::panicking() {
+            let r = self.0.clone();
+            thread::spawn(move || {
+                Worker(r).run();
+            });
+        }
     }
 }
