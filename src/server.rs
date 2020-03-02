@@ -44,20 +44,30 @@ fn handle_client<E: KvsEngine>(engine: E, stream: TcpStream) -> Result<()> {
     debug!("Connected to {}", peer_addr);
 
     for request in Deserializer::from_reader(stream).into_iter::<Request>() {
-        let request = request?;
+        let request =
+            request.map_err(|e| failure::err_msg(format!("deserializing error {}", e)))?;
         debug!("Receive request from {}: {:?}", peer_addr, request);
         let response = match request {
             Request::Get { key } => match engine.get(key) {
                 Ok(value) => Response::Ok(value),
-                Err(e) => Response::Err(format!("{}", e)),
+                Err(e) => {
+                    error!("engine error: {}", e);
+                    Response::Err(format!("{}", e))
+                }
             },
             Request::Set { key, value } => match engine.set(key, value) {
                 Ok(()) => Response::Ok(None),
-                Err(e) => Response::Err(format!("{}", e)),
+                Err(e) => {
+                    error!("engine error: {}", e);
+                    Response::Err(format!("{}", e))
+                }
             },
             Request::Rm { key } => match engine.remove(key) {
                 Ok(()) => Response::Ok(None),
-                Err(e) => Response::Err(format!("{}", e)),
+                Err(e) => {
+                    error!("engine error: {}", e);
+                    Response::Err(format!("{}", e))
+                }
             },
         };
         serde_json::to_writer(&mut writer, &response)?;

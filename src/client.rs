@@ -18,7 +18,7 @@ impl KvsClient {
     pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<Self> {
         let writer = TcpStream::connect(addr)?;
         let reader = Deserializer::from_reader(writer.try_clone()?);
-        debug!("Connected to {}", writer.peer_addr()?);
+        //        debug!("Connected to {}", writer.peer_addr()?);
         Ok(KvsClient { reader, writer })
     }
 

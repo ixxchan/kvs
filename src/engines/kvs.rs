@@ -101,6 +101,7 @@ impl KvStore {
     /// or create a new one if no logs exist in this directory
     pub fn open(path: impl Into<PathBuf>) -> Result<Self> {
         let path = Arc::new(path.into());
+        debug!("open KvStore {:?}", path);
         std::fs::create_dir_all(&*path)?;
         let mut imap = Arc::new(RwLock::new(HashMap::new()));
         let cache = Arc::new(RwLock::new(HashMap::new()));
@@ -143,12 +144,20 @@ impl KvStore {
 
     /// Compacting the log.
     pub fn compact(&self) -> Result<()> {
-        let f = File::create(self.log_dir.join("compacted.json"))?;
+        let f = File::create(self.log_dir.join("compacted.json")).map_err(|e| {
+            failure::err_msg(format!(
+                "Fail to compact 1: {}\nself.log_dir: {:?}",
+                e, self.log_dir
+            ))
+        })?;
         let mut compacted_writer = LogWriter::new(f);
         let mut imap = self.imap.write().unwrap();
         for index in imap.values_mut() {
             // It seems inefficient to create a reader in every iteration
-            let mut reader = LogReader::new(File::open(self.log_dir.join("log.json"))?);
+            let mut reader = LogReader::new(
+                File::open(self.log_dir.join("log.json"))
+                    .map_err(|e| failure::err_msg(format!("Fail to compact 2: {}", e)))?,
+            );
             reader.seek(SeekFrom::Start(index.pos))?;
             let mut reader = reader.take(index.len);
             index.pos = compacted_writer.pos;

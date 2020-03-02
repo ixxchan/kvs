@@ -14,6 +14,7 @@ use kvs::{KvStore, KvsClient, KvsServer, Result, SledKvsEngine};
 
 pub fn write_queued_kvstore(c: &mut Criterion) {
     let inputs = &[1, 2, 4, 6, 8, 12];
+    env_logger::from_env(Env::default().default_filter_or("info")).init();
 
     c.bench_function_over_inputs(
         "write_queued_kvstore",
@@ -22,7 +23,6 @@ pub fn write_queued_kvstore(c: &mut Criterion) {
             let temp_dir = TempDir::new().unwrap();
             let engine = KvStore::open(temp_dir.path()).unwrap();
 
-            env_logger::from_env(Env::default().default_filter_or("debug")).init();
             info!("wtf");
             let mut server = KvsServer::new(engine, pool);
             thread::spawn(move || server.run("127.0.0.1:5005"));
@@ -39,18 +39,22 @@ pub fn write_queued_kvstore(c: &mut Criterion) {
                             Ok(mut client) => {
                                 if let Err(e) = client.set(format!("key{}", i), "value".to_owned())
                                 {
-                                    eprintln!("2 {}", e);
+                                    error!("2 {}", e);
+                                    //                                    panic!();
                                 }
                             }
                             Err(e) => {
-                                eprintln!("1 {}", e);
+                                error!("1 {}", e);
+                                //                                panic!();
                             }
                         }
                         drop(wg);
                     })
                 }
                 wg.wait();
+                info!("one iteration ends");
             });
+            info!("b.iter ends");
         },
         inputs,
     );
@@ -95,5 +99,13 @@ pub fn read_queued_kvstore(c: &mut Criterion) {
     );
 }
 
-criterion_group!(benches, write_queued_kvstore, read_queued_kvstore);
+pub fn write_rayon_kvstore(c: &mut Criterion) {}
+
+pub fn read_rayon_kvstore(c: &mut Criterion) {}
+
+pub fn write_rayon_sled(c: &mut Criterion) {}
+
+pub fn read_rayon_sled(c: &mut Criterion) {}
+
+criterion::criterion_group!(benches, write_queued_kvstore, read_queued_kvstore);
 criterion_main!(benches);

@@ -13,7 +13,7 @@ pub fn write_bench(c: &mut Criterion) {
                 let temp_dir = TempDir::new().unwrap();
                 KvStore::open(temp_dir.path()).unwrap()
             },
-            |mut engine| {
+            |engine| {
                 for i in 1..store_size {
                     engine
                         .set(format!("key{}", i), format!("value{}", i))
@@ -29,7 +29,7 @@ pub fn write_bench(c: &mut Criterion) {
                 let temp_dir = TempDir::new().unwrap();
                 SledKvsEngine::open(temp_dir).unwrap()
             },
-            |mut engine| {
+            |engine| {
                 for i in 1..store_size {
                     engine
                         .set(format!("key{}", i), format!("value{}", i))
@@ -47,7 +47,7 @@ pub fn read_bench(c: &mut Criterion) {
     let mut group = c.benchmark_group("Read Group");
     group.bench_function("kvs_read", |b| {
         let temp_dir = TempDir::new().unwrap();
-        let mut engine = KvStore::open(temp_dir.path()).unwrap();
+        let engine = KvStore::open(temp_dir.path()).unwrap();
         for i in 1..store_size {
             engine
                 .set(format!("key{}", i), format!("value{}", i))
@@ -62,7 +62,7 @@ pub fn read_bench(c: &mut Criterion) {
     });
     group.bench_function("sled_read", |b| {
         let temp_dir = TempDir::new().unwrap();
-        let mut engine = SledKvsEngine::open(temp_dir).unwrap();
+        let engine = SledKvsEngine::open(temp_dir).unwrap();
         for i in 1..store_size {
             engine
                 .set(format!("key{}", i), format!("value{}", i))
