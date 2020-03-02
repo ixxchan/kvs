@@ -29,26 +29,29 @@ pub struct KvStore {
 
 impl KvsEngine for KvStore {
     fn set(&self, key: String, value: String) -> Result<()> {
-        let mut writer = self.writer.lock().unwrap();
+        let len;
+        let start_pos;
+        {
+            let mut writer = self.writer.lock().unwrap();
 
-        let start_pos = writer.pos;
-        let cmd = Command::Set {
-            key: key.clone(),
-            value: value.clone(),
-        };
+            start_pos = writer.pos;
+            let cmd = Command::Set {
+                key: key.clone(),
+                value: value.clone(),
+            };
 
-        serde_json::to_writer(&mut *writer, &cmd)?;
-        writer.flush()?;
-
-        let len = writer.pos - start_pos;
-
-        let mut cache = self.cache.write().unwrap();
-        let mut imap = self.imap.write().unwrap();
-        cache.insert(key.clone(), value);
-        if imap.insert(key, LogIndex::new(start_pos, len)).is_some() {
-            *self.dead.lock().unwrap() += 1;
+            serde_json::to_writer(&mut *writer, &cmd)?;
+            writer.flush()?;
+            len = writer.pos - start_pos;
         }
-
+        {
+            let mut cache = self.cache.write().unwrap();
+            let mut imap = self.imap.write().unwrap();
+            cache.insert(key.clone(), value);
+            if imap.insert(key, LogIndex::new(start_pos, len)).is_some() {
+                *self.dead.lock().unwrap() += 1;
+            }
+        }
         // kill zombies
         if *self.dead.lock().unwrap() >= COMPACTION_THRESHOLD {
             self.compact()?;
@@ -142,7 +145,8 @@ impl KvStore {
     pub fn compact(&self) -> Result<()> {
         let f = File::create(self.log_dir.join("compacted.json"))?;
         let mut compacted_writer = LogWriter::new(f);
-        for index in self.imap.write().unwrap().values_mut() {
+        let mut imap = self.imap.write().unwrap();
+        for index in imap.values_mut() {
             // It seems inefficient to create a reader in every iteration
             let mut reader = LogReader::new(File::open(self.log_dir.join("log.json"))?);
             reader.seek(SeekFrom::Start(index.pos))?;
