@@ -1,12 +1,12 @@
+use chashmap::CHashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Deserializer;
-use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::prelude::*;
-use std::io::{self, BufReader, BufWriter, ErrorKind, Seek, SeekFrom};
+use std::io::{self, BufReader, BufWriter, Seek, SeekFrom};
 use std::mem;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 
 use super::KvsEngine;
 use crate::Result;
@@ -18,8 +18,8 @@ const COMPACTION_THRESHOLD: u64 = 1024;
 #[derive(Clone)]
 pub struct KvStore {
     // index map
-    imap: Arc<RwLock<HashMap<String, LogIndex>>>,
-    cache: Arc<RwLock<HashMap<String, String>>>,
+    imap: Arc<CHashMap<String, LogIndex>>,
+    cache: Arc<CHashMap<String, String>>,
     log_dir: Arc<PathBuf>,
     writer: Arc<Mutex<LogWriter>>,
     //reader: LogReader,
@@ -44,14 +44,16 @@ impl KvsEngine for KvStore {
             writer.flush()?;
             len = writer.pos - start_pos;
         }
+
+        self.cache.insert(key.clone(), value);
+        if self
+            .imap
+            .insert(key, LogIndex::new(start_pos, len))
+            .is_some()
         {
-            let mut cache = self.cache.write().unwrap();
-            let mut imap = self.imap.write().unwrap();
-            cache.insert(key.clone(), value);
-            if imap.insert(key, LogIndex::new(start_pos, len)).is_some() {
-                *self.dead.lock().unwrap() += 1;
-            }
+            *self.dead.lock().unwrap() += 1;
         }
+
         // kill zombies
         if *self.dead.lock().unwrap() >= COMPACTION_THRESHOLD {
             self.compact()?;
@@ -61,17 +63,17 @@ impl KvsEngine for KvStore {
     }
 
     fn get(&self, key: String) -> Result<Option<String>> {
-        if let Some(value) = self.cache.read().unwrap().get(&key) {
+        if let Some(value) = self.cache.get(&key) {
             return Ok(Some(value.clone()));
         }
-        match self.imap.read().unwrap().get(&key) {
+        match self.imap.get(&key) {
             Some(index) => {
                 let mut reader = LogReader::new(File::open(self.log_dir.join("log.json"))?);
                 reader.seek(SeekFrom::Start(index.pos))?;
                 let reader = reader.take(index.len);
                 match serde_json::from_reader(reader)? {
                     Command::Set { key: k, value: v } if key == k => {
-                        self.cache.write().unwrap().insert(key, v.clone());
+                        self.cache.insert(key, v.clone());
                         Ok(Some(v))
                     }
                     c => panic!("inconsistent command {:?}", c),
@@ -82,11 +84,11 @@ impl KvsEngine for KvStore {
     }
 
     fn remove(&self, key: String) -> Result<()> {
-        if self.imap.write().unwrap().remove(&key).is_none() {
+        if self.imap.remove(&key).is_none() {
             return Err(failure::err_msg("Key not found"));
         }
         *self.dead.lock().unwrap() += 1;
-        self.cache.write().unwrap().remove(&key);
+        self.cache.remove(&key);
 
         let cmd = Command::Rm { key };
         let mut writer = self.writer.lock().unwrap();
@@ -103,8 +105,7 @@ impl KvStore {
         let path = Arc::new(path.into());
         debug!("open KvStore {:?}", path);
         std::fs::create_dir_all(&*path)?;
-        let mut imap = Arc::new(RwLock::new(HashMap::new()));
-        let cache = Arc::new(RwLock::new(HashMap::new()));
+        let cache = Arc::new(CHashMap::new());
         let f = OpenOptions::new()
             .create(true)
             .append(true)
@@ -112,22 +113,22 @@ impl KvStore {
         let writer = Arc::new(Mutex::new(LogWriter::new(f)));
         //let reader = LogReader::new(File::open(path.join("log.json")).unwrap());
 
-        match File::open(path.join("index.json")) {
-            // restore the in-memory index from the index file if it exists
-            Ok(idx_file) => {
-                imap = Arc::new(RwLock::new(serde_json::from_reader(BufReader::new(
-                    idx_file,
-                ))?))
-            }
-            // read the log to restore the database in the memory
-            Err(e) if e.kind() == ErrorKind::NotFound => {
-                KvStore::load_log(&path, &mut imap.write().unwrap())?
-            }
-            Err(e) => return Err(e.into()),
-        }
+        // TODO: save index?
+
+        //        match File::open(path.join("index.json")) {
+        //            // restore the in-memory index from the index file if it exists
+        //            Ok(idx_file) => imap = Arc::new(serde_json::from_reader(BufReader::new(idx_file))?),
+        //            // read the log to restore the database in the memory
+        //            Err(e) if e.kind() == ErrorKind::NotFound => KvStore::load_log(&path, &mut imap)?,
+        //            Err(e) => return Err(e.into()),
+        //        }
+
+        // read the log to restore the database in the memory
+        let imap = CHashMap::new();
+        KvStore::load_log(&path, &imap)?;
 
         Ok(KvStore {
-            imap,
+            imap: Arc::new(imap),
             cache,
             log_dir: path,
             writer,
@@ -136,11 +137,12 @@ impl KvStore {
         })
     }
 
-    fn save_index(&self) -> Result<()> {
-        let idx_file = File::create(self.log_dir.join("index.json"))?;
-        serde_json::to_writer(idx_file, &*self.imap.read().unwrap())?;
-        Ok(())
-    }
+    // **DEPRECATED**
+    //    fn save_index(&self) -> Result<()> {
+    //        let idx_file = File::create(self.log_dir.join("index.json"))?;
+    //        serde_json::to_writer(idx_file, &self.imap)?;
+    //        Ok(())
+    //    }
 
     /// Compacting the log.
     pub fn compact(&self) -> Result<()> {
@@ -151,8 +153,8 @@ impl KvStore {
             ))
         })?;
         let mut compacted_writer = LogWriter::new(f);
-        let mut imap = self.imap.write().unwrap();
-        for index in imap.values_mut() {
+        let imap = (*self.imap).clone();
+        for (_, mut index) in imap.into_iter() {
             // It seems inefficient to create a reader in every iteration
             let mut reader = LogReader::new(
                 File::open(self.log_dir.join("log.json"))
@@ -181,7 +183,7 @@ impl KvStore {
         Ok(())
     }
 
-    fn load_log(path: &Path, map: &mut HashMap<String, LogIndex>) -> Result<()> {
+    fn load_log(path: &Path, map: &CHashMap<String, LogIndex>) -> Result<()> {
         let mut reader = LogReader::new(File::open(path.join("log.json"))?);
         loop {
             let start_pos = reader.pos;
@@ -207,14 +209,15 @@ impl KvStore {
     }
 }
 
-impl Drop for KvStore {
-    fn drop(&mut self) {
-        if self.save_index().is_err() {
-            // fail to save index
-            let _ = fs::remove_file(self.log_dir.join("index.json"));
-        }
-    }
-}
+// **DEPRECATED**
+//impl Drop for KvStore {
+//    fn drop(&mut self) {
+//        if self.save_index().is_err() {
+//            // fail to save index
+//            let _ = fs::remove_file(self.log_dir.join("index.json"));
+//        }
+//    }
+//}
 
 #[derive(Serialize, Deserialize, Debug)]
 enum Command {
@@ -278,7 +281,7 @@ impl Write for LogWriter {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct LogIndex {
     pos: u64,
     len: u64,

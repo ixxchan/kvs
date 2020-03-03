@@ -1,5 +1,4 @@
 use crossbeam::crossbeam_channel::{bounded, Receiver, Sender};
-use std::panic::{self, AssertUnwindSafe};
 use std::thread;
 
 use super::ThreadPool;
