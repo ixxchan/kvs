@@ -19,7 +19,7 @@ const COMPACTION_THRESHOLD: u64 = 1024;
 pub struct KvStore {
     // index map
     imap: Arc<CHashMap<String, LogIndex>>,
-    cache: Arc<CHashMap<String, String>>,
+    //    cache: Arc<CHashMap<String, String>>,
     log_dir: Arc<PathBuf>,
     writer: Arc<Mutex<LogWriter>>,
     //reader: LogReader,
@@ -45,7 +45,7 @@ impl KvsEngine for KvStore {
             len = writer.pos - start_pos;
         }
 
-        self.cache.insert(key.clone(), value);
+        //        self.cache.insert(key.clone(), value);
         if self
             .imap
             .insert(key, LogIndex::new(start_pos, len))
@@ -63,9 +63,9 @@ impl KvsEngine for KvStore {
     }
 
     fn get(&self, key: String) -> Result<Option<String>> {
-        if let Some(value) = self.cache.get(&key) {
-            return Ok(Some(value.clone()));
-        }
+        //        if let Some(value) = self.cache.get(&key) {
+        //            return Ok(Some(value.clone()));
+        //        }
         match self.imap.get(&key) {
             Some(index) => {
                 let mut reader = LogReader::new(File::open(self.log_dir.join("log.json"))?);
@@ -73,7 +73,7 @@ impl KvsEngine for KvStore {
                 let reader = reader.take(index.len);
                 match serde_json::from_reader(reader)? {
                     Command::Set { key: k, value: v } if key == k => {
-                        self.cache.insert(key, v.clone());
+                        //                        self.cache.insert(key, v.clone());
                         Ok(Some(v))
                     }
                     c => panic!("inconsistent command {:?}", c),
@@ -88,7 +88,7 @@ impl KvsEngine for KvStore {
             return Err(failure::err_msg("Key not found"));
         }
         *self.dead.lock().unwrap() += 1;
-        self.cache.remove(&key);
+        //        self.cache.remove(&key);
 
         let cmd = Command::Rm { key };
         let mut writer = self.writer.lock().unwrap();
@@ -105,7 +105,7 @@ impl KvStore {
         let path = Arc::new(path.into());
         debug!("open KvStore {:?}", path);
         std::fs::create_dir_all(&*path)?;
-        let cache = Arc::new(CHashMap::new());
+        //        let cache = Arc::new(CHashMap::new());
         let f = OpenOptions::new()
             .create(true)
             .append(true)
@@ -129,7 +129,7 @@ impl KvStore {
 
         Ok(KvStore {
             imap: Arc::new(imap),
-            cache,
+            //            cache,
             log_dir: path,
             writer,
             //reader,
@@ -154,7 +154,7 @@ impl KvStore {
         })?;
         let mut compacted_writer = LogWriter::new(f);
         let imap = (*self.imap).clone();
-        for (_, mut index) in imap.into_iter() {
+        for (key, mut index) in imap.into_iter() {
             // It seems inefficient to create a reader in every iteration
             let mut reader = LogReader::new(
                 File::open(self.log_dir.join("log.json"))
@@ -163,6 +163,7 @@ impl KvStore {
             reader.seek(SeekFrom::Start(index.pos))?;
             let mut reader = reader.take(index.len);
             index.pos = compacted_writer.pos;
+            self.imap.insert(key, index);
             io::copy(&mut reader, &mut compacted_writer)?;
         }
 
