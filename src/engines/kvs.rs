@@ -37,7 +37,7 @@ impl KvsEngine for KvStore {
             start_pos = writer.pos;
             let cmd = Command::Set {
                 key: key.clone(),
-                value: value.clone(),
+                value,
             };
 
             serde_json::to_writer(&mut *writer, &cmd)?;
